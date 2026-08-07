@@ -90,14 +90,6 @@ public partial class MainWindow
 		_screenViewModel.UpdateCardWidth(galleryWidth);
 	}
 
-	private void ThemeCategory_OnChecked(object sender, RoutedEventArgs e)
-	{
-		if (sender is RadioButton { Tag: string categoryId })
-		{
-			_screenViewModel.SelectCategory(categoryId);
-		}
-	}
-
 	private void LocateCurrent_OnClick(object sender, RoutedEventArgs e)
 	{
 		Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>

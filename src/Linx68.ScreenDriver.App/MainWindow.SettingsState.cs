@@ -8,12 +8,12 @@ namespace Linx68.ScreenDriver.App;
 
 public partial class MainWindow
 {
-	private void PopulateMediaAutomationThemeSelectors()
+	private void LoadAutomationSettings()
 	{
 		_updatingAutomation = true;
 		try
 		{
-			_automationViewModel.Load(_settings, _themeDefinitions);
+			_automationViewModel.Load(_settings);
 		}
 		finally
 		{
@@ -39,15 +39,6 @@ public partial class MainWindow
 				break;
 			case nameof(AutomationViewModel.AutoSwitchToMusic):
 				_settings.AutoSwitchToMusic = _automationViewModel.AutoSwitchToMusic;
-				break;
-			case nameof(AutomationViewModel.AutoMediaThemeSwitch):
-				_settings.AutoMediaThemeSwitch = _automationViewModel.AutoMediaThemeSwitch;
-				break;
-			case nameof(AutomationViewModel.SelectedIdleTheme):
-				_settings.MediaIdleThemeId = _automationViewModel.SelectedIdleTheme?.Id ?? "system";
-				break;
-			case nameof(AutomationViewModel.SelectedPlayingTheme):
-				_settings.MediaPlayingThemeId = _automationViewModel.SelectedPlayingTheme?.Id ?? "music";
 				break;
 			default:
 				return;

@@ -23,16 +23,11 @@ public sealed class DashboardRefreshService(
         ThemeDefinition selectedTheme = FindTheme(request.Themes, request.SelectedThemeId)
             ?? request.Themes[0];
         bool mediaIsPlaying = sourceMusic.Available && sourceMusic.IsPlaying;
-        string effectiveThemeId = MediaThemeAutomation.ResolveThemeId(
-            request.Settings,
-            mediaIsPlaying,
-            selectedTheme.Id,
-            id => FindTheme(request.Themes, id)?.Category == ThemeCategory.Music);
-        ThemeDefinition effectiveTheme = FindTheme(request.Themes, effectiveThemeId)
-            ?? FindTheme(request.Themes, mediaIsPlaying ? "music" : "system")
-            ?? request.Themes[0];
+        ThemeDefinition effectiveTheme = request.Settings.AutoSwitchToMusic && mediaIsPlaying
+            ? FindTheme(request.Themes, "music") ?? selectedTheme
+            : selectedTheme;
 
-        bool effectiveThemeChanged = request.Settings.AutoMediaThemeSwitch
+        bool effectiveThemeChanged = request.Settings.AutoSwitchToMusic
             && request.PreviousEffectiveThemeId is not null
             && !string.Equals(
                 request.PreviousEffectiveThemeId,

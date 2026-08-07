@@ -62,10 +62,28 @@ public sealed class JsonSettingsStore : ISettingsStore
 				return new AppSettings();
 			}
 
-			await using FileStream stream = File.OpenRead(Path);
-			AppSettings settings = await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions, cancellationToken).ConfigureAwait(false)
-				?? new AppSettings();
-			return Normalize(settings);
+			AppSettings settings;
+			await using (FileStream stream = File.OpenRead(Path))
+			{
+				settings = await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions, cancellationToken).ConfigureAwait(false)
+					?? new AppSettings();
+			}
+
+			int loadedVersion = settings.SettingsVersion;
+			settings = Normalize(settings);
+			if (loadedVersion < AppSettings.CurrentSettingsVersion)
+			{
+				try
+				{
+					await SaveAsync(settings, cancellationToken).ConfigureAwait(false);
+				}
+				catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+				{
+					// Keep using the migrated settings even if the original file cannot be replaced.
+				}
+			}
+
+			return settings;
 		}
 		catch (JsonException)
 		{
@@ -116,25 +134,48 @@ public sealed class JsonSettingsStore : ISettingsStore
 
 	private static AppSettings Normalize(AppSettings settings)
 	{
+		bool migrateAiQuotaToCodex = settings.SettingsVersion < 4;
+		bool migrateRemovedMusicThemes = settings.SettingsVersion < 5;
+		bool enableOnlineLyrics = settings.SettingsVersion < 7;
 		settings.SettingsVersion = AppSettings.CurrentSettingsVersion;
 		settings.DeviceEndpoint ??= string.Empty;
 		settings.SelectedThemeId ??= "clock-dot-matrix";
 		settings.AccentColor ??= "#E4694C";
 		settings.SelectedFontId ??= "builtin:segoe-variable-display";
-		settings.MediaPlayingThemeId ??= "music";
-		settings.MediaIdleThemeId ??= "system";
 		settings.SafeArea ??= new ScreenInsets(10, 52, 10, 12);
 		settings.Music ??= new MusicSettings();
+		if (enableOnlineLyrics)
+		{
+			settings.Music.EnableOnlineLyrics = true;
+		}
 		settings.AiQuota ??= new AiQuotaSettings();
 		if (!Enum.IsDefined(settings.AiQuota.SourceKind))
 		{
-			settings.AiQuota.SourceKind = AiQuotaSourceKind.XiaomiMiMoTokenPlanChina;
+			settings.AiQuota.SourceKind = AiQuotaSourceKind.OpenAICodex;
+		}
+		if (migrateAiQuotaToCodex)
+		{
+			settings.AiQuota.SourceKind = AiQuotaSourceKind.OpenAICodex;
+			if (string.IsNullOrWhiteSpace(settings.AiQuota.DisplayName) ||
+				string.Equals(settings.AiQuota.DisplayName, "MiMo", StringComparison.OrdinalIgnoreCase))
+			{
+				settings.AiQuota.DisplayName = "Codex";
+			}
+		}
+		if (migrateRemovedMusicThemes)
+		{
+			settings.SelectedThemeId = NormalizeRemovedMusicTheme(settings.SelectedThemeId, "music");
 		}
 		settings.Weather ??= new WeatherSettings();
 		settings.Stocks ??= new StockSettings();
 		settings.RefreshSeconds = Math.Clamp(settings.RefreshSeconds, 1, 30);
 		return settings;
 	}
+
+	private static string NormalizeRemovedMusicTheme(string? themeId, string replacement) =>
+		themeId is "music-vinyl" or "music-cassette" or "music-minimal" or "music-poster"
+			? replacement
+			: themeId ?? replacement;
 
 	private void PreserveInvalidSettings()
 	{

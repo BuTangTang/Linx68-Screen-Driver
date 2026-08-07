@@ -17,6 +17,7 @@ public sealed class NetEaseMusicSnapshotEnricher : IMusicSnapshotEnricher, IDisp
     private readonly HttpClient _client;
     private readonly bool _ownsClient;
     private readonly Dictionary<string, CacheEntry> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<long, ArtworkCacheEntry> _artworkCache = [];
 
     public NetEaseMusicSnapshotEnricher(HttpClient? client = null)
     {
@@ -29,8 +30,23 @@ public sealed class NetEaseMusicSnapshotEnricher : IMusicSnapshotEnricher, IDisp
     public async Task<MusicSnapshot> EnrichAsync(MusicSnapshot music, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(music);
-        if (!music.Available || !WindowsMusicSessionSelector.IsNetEase(music.SourceAppId)
-            || string.IsNullOrWhiteSpace(music.Title) || music.ProviderTrackId is not null)
+        if (!music.Available || !WindowsMusicSessionSelector.IsNetEase(music.SourceAppId))
+        {
+            return music;
+        }
+
+        if (music.ProviderTrackId is long providerTrackId)
+        {
+            return await ApplyArtworkAsync(music, new SongMatch(
+                providerTrackId,
+                music.Title,
+                music.Artist,
+                music.AlbumTitle,
+                music.Duration,
+                ArtworkUrl: null), cancellationToken);
+        }
+
+        if (string.IsNullOrWhiteSpace(music.Title))
         {
             return music;
         }
@@ -38,7 +54,9 @@ public sealed class NetEaseMusicSnapshotEnricher : IMusicSnapshotEnricher, IDisp
         string key = $"{music.Title.Trim()}\n{music.Artist.Trim()}\n{Math.Round(music.Duration.TotalSeconds)}";
         if (_cache.TryGetValue(key, out CacheEntry? cached) && DateTimeOffset.Now < cached.ExpiresAt)
         {
-            return Apply(music, cached.Match);
+            return cached.Match is null
+                ? music
+                : await ApplyArtworkAsync(Apply(music, cached.Match), cached.Match, cancellationToken);
         }
 
         try
@@ -57,7 +75,9 @@ public sealed class NetEaseMusicSnapshotEnricher : IMusicSnapshotEnricher, IDisp
             using JsonDocument document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
             SongMatch? match = SelectBest(document.RootElement, music);
             _cache[key] = new CacheEntry(match, DateTimeOffset.Now + (match is null ? TimeSpan.FromMinutes(10) : CacheDuration));
-            return Apply(music, match);
+            return match is null
+                ? music
+                : await ApplyArtworkAsync(Apply(music, match), match, cancellationToken);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
@@ -101,11 +121,15 @@ public sealed class NetEaseMusicSnapshotEnricher : IMusicSnapshotEnricher, IDisp
             && albumObject.TryGetProperty("name", out JsonElement albumName)
                 ? albumName.GetString() ?? string.Empty
                 : string.Empty;
+        string? artworkUrl = song.TryGetProperty("album", out albumObject)
+            && albumObject.TryGetProperty("picUrl", out JsonElement albumArtwork)
+                ? albumArtwork.GetString()
+                : null;
         TimeSpan duration = song.TryGetProperty("duration", out JsonElement durationValue)
             && durationValue.TryGetInt64(out long milliseconds)
                 ? TimeSpan.FromMilliseconds(milliseconds)
                 : TimeSpan.Zero;
-        return new SongMatch(trackId, name.GetString()!, artist, album, duration);
+        return new SongMatch(trackId, name.GetString()!, artist, album, duration, artworkUrl);
     }
 
     private static double Score(SongMatch song, MusicSnapshot music)
@@ -133,6 +157,113 @@ public sealed class NetEaseMusicSnapshotEnricher : IMusicSnapshotEnricher, IDisp
             ProviderTrackId = match.Id
         };
 
+    private async Task<MusicSnapshot> ApplyArtworkAsync(
+        MusicSnapshot music,
+        SongMatch match,
+        CancellationToken cancellationToken)
+    {
+        if (music.Artwork is { Length: > 0 })
+        {
+            return music;
+        }
+
+        byte[]? artwork = await ReadArtworkAsync(match, cancellationToken);
+        return artwork is { Length: > 0 } ? music with { Artwork = artwork } : music;
+    }
+
+    private async Task<byte[]?> ReadArtworkAsync(SongMatch match, CancellationToken cancellationToken)
+    {
+        if (_artworkCache.TryGetValue(match.Id, out ArtworkCacheEntry? cached)
+            && DateTimeOffset.Now < cached.ExpiresAt)
+        {
+            return cached.Artwork;
+        }
+
+        try
+        {
+            string? artworkUrl = match.ArtworkUrl ?? await ReadArtworkUrlAsync(match.Id, cancellationToken);
+            byte[]? artwork = string.IsNullOrWhiteSpace(artworkUrl)
+                ? null
+                : await DownloadArtworkAsync(artworkUrl, cancellationToken);
+            _artworkCache[match.Id] = new ArtworkCacheEntry(
+                artwork,
+                DateTimeOffset.Now + (artwork is { Length: > 0 } ? CacheDuration : TimeSpan.FromHours(1)));
+            return artwork;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
+        {
+            _artworkCache[match.Id] = new ArtworkCacheEntry(null, DateTimeOffset.Now + TimeSpan.FromMinutes(1));
+            return null;
+        }
+    }
+
+    private async Task<string?> ReadArtworkUrlAsync(long trackId, CancellationToken cancellationToken)
+    {
+        string uri = $"https://music.163.com/api/song/detail/?id={trackId}&ids=%5B{trackId}%5D";
+        using HttpResponseMessage response = await _client.GetAsync(uri, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using JsonDocument document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+        if (!document.RootElement.TryGetProperty("songs", out JsonElement songs)
+            || songs.ValueKind != JsonValueKind.Array
+            || songs.GetArrayLength() == 0)
+        {
+            return null;
+        }
+
+        JsonElement song = songs[0];
+        return song.TryGetProperty("album", out JsonElement album)
+            && album.TryGetProperty("picUrl", out JsonElement artwork)
+            ? artwork.GetString()
+            : null;
+    }
+
+    private async Task<byte[]?> DownloadArtworkAsync(string value, CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return null;
+        }
+
+        using HttpResponseMessage response = await _client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        if (response.Content.Headers.ContentType?.MediaType is string contentType
+            && !contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        const int maximumArtworkBytes = 5 * 1024 * 1024;
+        if (response.Content.Headers.ContentLength is long contentLength && contentLength > maximumArtworkBytes)
+        {
+            return null;
+        }
+
+        await using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var output = new MemoryStream();
+        byte[] buffer = new byte[81920];
+        int total = 0;
+        while (true)
+        {
+            int read = await input.ReadAsync(buffer, cancellationToken);
+            if (read == 0)
+            {
+                break;
+            }
+
+            total += read;
+            if (total > maximumArtworkBytes)
+            {
+                return null;
+            }
+
+            output.Write(buffer, 0, read);
+        }
+
+        return output.Length == 0 ? null : output.ToArray();
+    }
+
     private static bool NormalizedEquals(string left, string right) =>
         string.Equals(Normalize(left), Normalize(right), StringComparison.OrdinalIgnoreCase);
 
@@ -158,6 +289,7 @@ public sealed class NetEaseMusicSnapshotEnricher : IMusicSnapshotEnricher, IDisp
         if (_ownsClient) _client.Dispose();
     }
 
-    private sealed record SongMatch(long Id, string Title, string Artist, string AlbumTitle, TimeSpan Duration);
+    private sealed record SongMatch(long Id, string Title, string Artist, string AlbumTitle, TimeSpan Duration, string? ArtworkUrl);
     private sealed record CacheEntry(SongMatch? Match, DateTimeOffset ExpiresAt);
+    private sealed record ArtworkCacheEntry(byte[]? Artwork, DateTimeOffset ExpiresAt);
 }

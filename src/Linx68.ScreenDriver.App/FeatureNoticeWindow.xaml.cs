@@ -41,13 +41,13 @@ public partial class FeatureNoticeWindow : Window
         ]);
 
     public static FeatureNoticeWindow CreateCodexNotice() => new(
-        "Codex 接入说明",
-        "在每台电脑上独立安装并授权",
-        "本应用只协助安装、登录与迁移 Codex 偏好配置，不会读取、复制或导出你的登录令牌。",
+        "Codex 额度说明",
+        "显示当前 ChatGPT Codex 额度窗口",
+        "AI 用量主题通过本机 Codex App Server 读取当前剩余比例、额度窗口和下次重置时间。",
         [
-            "可导出和导入的是 config.toml，不包含账号、API Key 或 auth.json",
-            "新电脑导入配置后，仍需使用自己的浏览器完成 Codex 登录",
-            "只从受信任的电脑导入配置；导入前会自动备份本机配置"
+            "需要在本机完成 Codex 的 ChatGPT 登录，API Key 登录不提供订阅额度窗口",
+            "本应用只读取额度结果，不会读取、复制或导出 auth.json、账号令牌或系统凭据",
+            "额度窗口和重置时间由 Codex 返回；未登录或数据不可用时会明确显示未获取"
         ]);
 
     private void Window_OnLoaded(object sender, RoutedEventArgs e)

@@ -35,7 +35,7 @@ Linx68.ScreenDriver.Infrastructure  Windows、HTTP、文件系统和 JSON 的端
 | `IDashboardRefreshService` | `DashboardRefreshService` | 主题决策和按需快照刷新 |
 | `IDisplayPushService` | `DisplayPushService` | IPv4 地址归一化和设备推送 |
 
-MiMo 用量登录窗口仍属于 App：它需要用户交互和 WebView2 已登录会话。刷新服务只在 AI 主题需要数据时通过回调请求该窗口，避免让登录实现渗入 Core 或 Infrastructure。
+Codex 额度读取位于 Infrastructure：它通过本机 Codex App Server 取得已登录 ChatGPT 账号的额度窗口，而不读取认证令牌。MiMo 用量登录窗口仍属于 App：它需要用户交互和 WebView2 已登录会话。刷新服务只在 AI 主题需要数据时通过回调请求相应数据源，避免让登录实现渗入 Core 或 Infrastructure。
 
 ## 刷新与推送流程
 
@@ -67,7 +67,7 @@ ScreenRenderer.Render → RenderedFrame (142 × 428 baseline JPEG)
 
 - `ScreenViewModel`：主题卡、分类筛选、选中状态和响应式卡片宽度。
 - `AppearanceViewModel`：应用外观、强调色校验、屏幕字体和图片时间位置。
-- `AutomationViewModel`：自动推送、刷新间隔和媒体主题切换。
+- `AutomationViewModel`：自动推送、刷新间隔和播放时自动切换。
 - `SettingsViewModel`：设备 IPv4 分段输入、内容安全区和托盘/启动行为。
 
 `MainWindow` 目前仍是 WPF 组合控制器：它处理动画、文件/颜色选择器、首次引导、MiMo 登录和页面相关控件的可见性；这些行为不能由无 WPF 依赖的 Application 服务替代。窗口生命周期与托盘行为、外观应用、设备状态呈现、设置状态/输入、显示方案画廊分别放在 `MainWindow.WindowLifecycle.cs`、`MainWindow.Appearance.cs`、`MainWindow.DeviceStatus.cs`、`MainWindow.SettingsState.cs`、`MainWindow.SettingsInput.cs` 与 `MainWindow.ThemeGallery.cs`，使主文件聚焦主题与数据编排。主题的上下文数据卡仍会在后续切片继续从窗口中抽出。

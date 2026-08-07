@@ -46,7 +46,9 @@ internal static class Program
         VerifyFirstRunGuideGeometry();
         VerifyFeatureNoticeGeometry();
         VerifySettingsIpEditorGeometry();
-        VerifyWorkspaceGeometry();
+		VerifyWorkspaceGeometry();
+		VerifyThemeCategoryNavigation();
+		VerifyManualThemeSelectionStopsAutoMusicSwitch();
 		VerifyAutomationControlDependency();
 		VerifyNavigationResetsScrollPosition();
 		VerifyRuntimeAppearanceSwitch(app);
@@ -100,7 +102,7 @@ internal static class Program
             definitions.Select(definition => new ThemeCardViewModel(definition, preview: null)),
             "clock");
         Assert(viewModel.ThemeGroups.Count == 5
-               && viewModel.ThemeGroups.Single(group => group.Id == "music").Themes.Count == 5
+               && viewModel.ThemeGroups.Single(group => group.Id == "music").Themes.Count == 4
                && viewModel.ThemeGroups.Sum(group => group.Themes.Count) == definitions.Count
                && !viewModel.IsAllCategorySelected
                && viewModel.VisibleThemes.All(theme => theme.Definition.CategoryId == viewModel.SelectedTheme!.Definition.CategoryId),
@@ -109,12 +111,12 @@ internal static class Program
         Assert(viewModel.IsAllCategorySelected && viewModel.VisibleThemes.Count == definitions.Count,
             "the all-schemes category must remain available on demand");
         viewModel.SelectCategory("music");
-        viewModel.SelectTheme("music-vinyl", notify: true);
+        viewModel.SelectTheme("music", notify: true);
         viewModel.UpdateCardWidth(500);
         Assert(!viewModel.IsAllCategorySelected
                && viewModel.ThemeGroups.Single(group => group.Id == "music").IsSelected
                && viewModel.VisibleThemes.All(theme => theme.Definition.CategoryId == "music")
-               && viewModel.SelectedTheme?.Id == "music-vinyl"
+               && viewModel.SelectedTheme?.Id == "music"
                && selectionCount == 1
                && viewModel.ThemeGroups.SelectMany(group => group.Themes).All(theme => theme.CardWidth >= 148)
                && viewModel.ThemeGroups.SelectMany(group => group.Themes).All(theme => theme.CardWidth * 2 + 24 <= 500),
@@ -154,30 +156,25 @@ internal static class Program
 
     private static void VerifyAutomationViewModel()
     {
-        var definitions = BuiltInThemes.CreateDefinitions(new ImageTheme());
         var settings = new AppSettings
         {
             AutoPush = false,
             RefreshSeconds = 99,
-            AutoSwitchToMusic = true,
-            AutoMediaThemeSwitch = true,
-            MediaIdleThemeId = "clock-neon",
-            MediaPlayingThemeId = "music-vinyl"
+            AutoSwitchToMusic = true
         };
         var viewModel = new AutomationViewModel();
-        viewModel.Load(settings, definitions);
+        viewModel.Load(settings);
         Assert(!viewModel.AutoPush
                && viewModel.RefreshSeconds == 30
-               && viewModel.IdleThemes.Any(theme => theme.Id == "clock-neon")
-               && viewModel.SelectedPlayingTheme?.Id == "music-vinyl",
+               && viewModel.AutoSwitchToMusic,
             "automation view model must load and normalize saved automation settings");
         viewModel.RefreshSeconds = 0;
         viewModel.AutoPush = true;
-        viewModel.SelectedIdleTheme = viewModel.IdleThemes.Single(theme => theme.Id == "system");
+        viewModel.AutoSwitchToMusic = false;
         viewModel.ApplyTo(settings);
         Assert(settings.RefreshSeconds == 1
                && settings.AutoPush
-               && settings.MediaIdleThemeId == "system",
+               && !settings.AutoSwitchToMusic,
             "automation view model must clamp and apply edited automation settings");
         Console.WriteLine("PASS MVVM automation state and settings mapping");
     }
@@ -218,7 +215,7 @@ internal static class Program
         {
             AppearanceMode = dark ? AppearanceMode.Dark : AppearanceMode.Light,
             HasCompletedOnboarding = true,
-            SelectedThemeId = "music-vinyl"
+            SelectedThemeId = "music"
         };
         var window = new MainWindow(settings, new InMemorySettingsStore(settings))
         {
@@ -374,7 +371,7 @@ internal static class Program
 		Assert(themeCategories.Items.Count == 5
 		       && themeGallery.Items.Count == shell.Screen.VisibleThemes.Count
 		       && themeGallery.Items.Count <= 5
-		       && shell.Screen.ThemeGroups.Sum(group => group.Themes.Count) == 19,
+		       && shell.Screen.ThemeGroups.Sum(group => group.Themes.Count) == 18,
 			"display schemes must use the left category navigation with one compact gallery");
 		Assert(themeCategoryNavigation.VerticalAlignment == VerticalAlignment.Top
 		       && themeCategoryNavigation.MinHeight == 0,
@@ -403,8 +400,46 @@ internal static class Program
 		WaitForDispatcher(TimeSpan.FromMilliseconds(50));
 		Assert(shell.IsSettingsPage && endpointShortcut.ToolTip?.ToString()?.Contains("设置") == true,
 			"clicking the device-address shortcut must open the settings page");
-		window.Close();
+        window.Close();
         Console.WriteLine("PASS compact sidebar, left scheme categories, compact gallery, locate-current action and fixed preview rail");
+    }
+
+    private static void VerifyThemeCategoryNavigation()
+    {
+        var settings = new AppSettings
+        {
+            HasCompletedOnboarding = true,
+            MinimizeToTray = false,
+            CloseToTray = false
+        };
+        var window = new MainWindow(settings, new InMemorySettingsStore(settings));
+        window.Show();
+        WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+
+        var shell = (ShellViewModel)window.DataContext;
+        var categories = (ItemsControl)window.FindName("ThemeCategoryPanel");
+        var music = shell.Screen.ThemeGroups.Single(group => group.Id == "music");
+        var musicCategory = FindVisualChild<RadioButton>(
+            categories.ItemContainerGenerator.ContainerFromItem(music));
+        Assert(musicCategory is not null,
+            "the music scheme category must render an interactive radio button");
+
+        Assert(!InteractionMotion.GetIsInteractive(musicCategory!),
+            "scheme categories must not scale beyond the scroll viewport and clip their left border");
+
+        var categoryCommand = musicCategory!.Command;
+		Assert(categoryCommand?.CanExecute(musicCategory.CommandParameter) == true,
+			"a scheme category must bind an executable selection command");
+		categoryCommand!.Execute(musicCategory.CommandParameter);
+        WaitForDispatcher(TimeSpan.FromMilliseconds(100));
+        Assert(music.IsSelected
+               && !shell.Screen.IsAllCategorySelected
+               && shell.Screen.VisibleThemes.Count == music.Themes.Count
+               && shell.Screen.VisibleThemes.All(theme => theme.Definition.CategoryId == "music"),
+            "selecting a scheme category must refresh the gallery to its matching themes");
+
+        window.Close();
+        Console.WriteLine("PASS scheme category selection refreshes the gallery");
     }
 
     private static void VerifyAutomationControlDependency()
@@ -435,6 +470,35 @@ internal static class Program
             "the refresh interval must be visibly disabled while timed push is off");
         window.Close();
         Console.WriteLine("PASS timed-push interval follows its controlling switch");
+    }
+
+    private static void VerifyManualThemeSelectionStopsAutoMusicSwitch()
+    {
+        var settings = new AppSettings
+        {
+            HasCompletedOnboarding = true,
+            SelectedThemeId = "music",
+            AutoSwitchToMusic = true,
+            AutoPush = false,
+            MinimizeToTray = false,
+            CloseToTray = false
+        };
+        var window = new MainWindow(settings, new InMemorySettingsStore(settings));
+        window.Show();
+        WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+
+        var shell = (ShellViewModel)window.DataContext;
+        shell.Screen.SelectTheme("clock", notify: true);
+        WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+
+        Assert(shell.Screen.SelectedTheme?.Id == "clock"
+               && !shell.Automation.AutoSwitchToMusic
+               && !settings.AutoSwitchToMusic
+               && settings.SelectedThemeId == "clock",
+            "manually selecting another scheme must override music auto switching instead of reverting the selection");
+
+        window.Close();
+        Console.WriteLine("PASS manual scheme selection takes priority over music auto switching");
     }
 
     private static void VerifyNavigationResetsScrollPosition()

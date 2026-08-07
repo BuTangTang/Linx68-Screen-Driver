@@ -115,13 +115,13 @@
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="142" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                         <StackPanel x:Name="ThemeCategoryNavigation" VerticalAlignment="Top">
                                             <TextBlock Text="方案分类" FontSize="12" FontWeight="SemiBold" Margin="8,4,8,12" />
-                                            <RadioButton Tag="all" GroupName="ThemeCategory" Style="{StaticResource ThemeCategoryRadio}" Checked="ThemeCategory_OnChecked" IsChecked="{Binding Screen.IsAllCategorySelected, Mode=OneWay}">
+											<RadioButton Tag="all" GroupName="ThemeCategory" Style="{StaticResource ThemeCategoryRadio}" Command="{Binding Screen.SelectCategoryCommand}" CommandParameter="all" IsChecked="{Binding Screen.IsAllCategorySelected, Mode=OneWay}">
                                                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="全部方案" /><TextBlock Grid.Column="1" Text="{Binding Screen.AllThemeCount}" Foreground="{DynamicResource SecondaryText}" /></Grid>
                                             </RadioButton>
                                             <ItemsControl x:Name="ThemeCategoryPanel" ItemsSource="{Binding Screen.ThemeGroups}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
-                                                        <RadioButton Tag="{Binding Id}" GroupName="ThemeCategory" Style="{StaticResource ThemeCategoryRadio}" Checked="ThemeCategory_OnChecked" IsChecked="{Binding IsSelected, Mode=OneWay}">
+														<RadioButton Tag="{Binding Id}" GroupName="ThemeCategory" Style="{StaticResource ThemeCategoryRadio}" Command="{Binding DataContext.Screen.SelectCategoryCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Id}" IsChecked="{Binding IsSelected, Mode=OneWay}">
                                                             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="1" Text="{Binding Themes.Count}" Foreground="{DynamicResource SecondaryText}" /></Grid>
                                                         </RadioButton>
                                                     </DataTemplate>
@@ -212,7 +212,7 @@
                                                         <ColumnDefinition />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="AI 用量数据源（测试版）" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                    <TextBlock Text="Codex 额度（测试版）" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
                                                     <TextBlock x:Name="AiSourceStatusText" Grid.Column="1" Text="尚未连接"
                                                                FontSize="11" Foreground="{DynamicResource SecondaryText}"
                                                                VerticalAlignment="Center" Margin="16,0,0,0" />
@@ -251,7 +251,7 @@
                                                             <TextBlock Text="建议不超过 12 个字符" FontSize="11"
                                                                        Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" />
                                                         </StackPanel>
-                                                        <TextBox x:Name="AiDisplayNameTextBox" Grid.Column="1" Text="MiMo" MaxLength="18"
+                                                        <TextBox x:Name="AiDisplayNameTextBox" Grid.Column="1" Text="Codex" MaxLength="18"
                                                                  VerticalAlignment="Center" TextChanged="SettingTextBox_OnTextChanged" />
                                                     </Grid>
                                                 </Border>
@@ -267,19 +267,19 @@
                                                                 <ColumnDefinition Width="1.1*" />
                                                             </Grid.ColumnDefinitions>
                                                             <StackPanel VerticalAlignment="Center">
-                                                                <TextBlock Text="剩余额度" FontSize="11" Foreground="{DynamicResource SecondaryText}" />
+                                                                <TextBlock Text="当前窗口剩余" FontSize="11" Foreground="{DynamicResource SecondaryText}" />
                                                                 <TextBlock x:Name="MiMoRemainingValueText" Text="—" FontSize="24"
                                                                            FontWeight="SemiBold" Margin="0,4,0,0" />
                                                             </StackPanel>
                                                             <Border Grid.Column="1" Width="1" Background="{DynamicResource Stroke.Default}" Margin="18,2" />
                                                             <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                                                <TextBlock Text="已使用 / 总额" FontSize="11" Foreground="{DynamicResource SecondaryText}" />
+                                                                <TextBlock Text="当前窗口已用" FontSize="11" Foreground="{DynamicResource SecondaryText}" />
                                                                 <TextBlock x:Name="MiMoCreditsValueText" Text="—" FontSize="15"
                                                                            FontWeight="SemiBold" Margin="0,6,0,0" />
                                                             </StackPanel>
                                                             <Border Grid.Column="3" Width="1" Background="{DynamicResource Stroke.Default}" Margin="18,2" />
                                                             <StackPanel Grid.Column="4" VerticalAlignment="Center">
-                                                                <TextBlock Text="本期截止" FontSize="11" Foreground="{DynamicResource SecondaryText}" />
+                                                                <TextBlock Text="下次重置" FontSize="11" Foreground="{DynamicResource SecondaryText}" />
                                                                 <TextBlock x:Name="MiMoExpiryValueText" Text="—" FontSize="15"
                                                                            FontWeight="SemiBold" Margin="0,6,0,0" />
                                                             </StackPanel>
@@ -309,7 +309,7 @@
                                                 <WrapPanel x:Name="CodexActionsPanel" HorizontalAlignment="Right" Margin="0,12,0,0" Visibility="Collapsed">
                                                     <Button Content="安装/更新 Codex" MinWidth="126" Click="CodexInstallButton_OnClick" />
                                                     <Button Content="登录 Codex" MinWidth="104" Margin="8,0,0,8" Click="CodexLoginButton_OnClick" />
-                                                    <Button Content="检查状态" Style="{StaticResource SecondaryButton}" MinWidth="92" Margin="8,0,0,8" Click="CodexStatusButton_OnClick" />
+                                                    <Button Content="刷新额度" Style="{StaticResource SecondaryButton}" MinWidth="92" Margin="8,0,0,8" Click="CodexStatusButton_OnClick" />
                                                     <Button Content="打开配置" Style="{StaticResource SecondaryButton}" MinWidth="92" Margin="8,0,0,8" Click="CodexOpenConfigButton_OnClick" />
                                                     <Button Content="导出配置" Style="{StaticResource SecondaryButton}" MinWidth="92" Margin="8,0,0,8" Click="CodexExportConfigButton_OnClick" />
                                                     <Button Content="导入配置" Style="{StaticResource SecondaryButton}" MinWidth="92" Margin="8,0,0,8" Click="CodexImportConfigButton_OnClick" />
@@ -499,37 +499,10 @@
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                                 <StackPanel>
                                                     <TextBlock Text="播放音乐时自动切换" FontSize="15" FontWeight="SemiBold" />
-                                                    <TextBlock Text="检测到活动媒体会话后临时显示默认音乐页面。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0" />
+                                                    <TextBlock Text="检测到媒体播放时显示音乐页；手动选择其它方案会自动关闭此项。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0" />
                                                 </StackPanel>
                                                 <CheckBox x:Name="AutoMusicCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Automation.AutoSwitchToMusic, Mode=TwoWay}" />
                                             </Grid>
-                                        </Border>
-                                        <Border Style="{StaticResource SectionCard}">
-                                            <StackPanel>
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                                    <StackPanel>
-                                                        <TextBlock Text="媒体主题自动切换" FontSize="15" FontWeight="SemiBold" />
-                                                        <TextBlock Text="播放与停止时分别切换到指定主题。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0" />
-                                                    </StackPanel>
-                                                    <CheckBox x:Name="MediaThemeAutomationCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Automation.AutoMediaThemeSwitch, Mode=TwoWay}" />
-                                                </Grid>
-                                                <Grid Margin="0,18,0,0" IsEnabled="{Binding IsChecked, ElementName=MediaThemeAutomationCheckBox}">
-                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                                    <StackPanel>
-                                                        <TextBlock Text="无媒体播放时" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,0,0,8" />
-                                                        <ComboBox x:Name="MediaIdleThemeComboBox" Height="44" ItemsSource="{Binding Automation.IdleThemes}" SelectedItem="{Binding Automation.SelectedIdleTheme, Mode=TwoWay}">
-                                                            <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
-                                                        </ComboBox>
-                                                    </StackPanel>
-                                                    <StackPanel Grid.Column="2">
-                                                        <TextBlock Text="检测到播放时" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,0,0,8" />
-                                                        <ComboBox x:Name="MediaPlayingThemeComboBox" Height="44" ItemsSource="{Binding Automation.PlayingThemes}" SelectedItem="{Binding Automation.SelectedPlayingTheme, Mode=TwoWay}">
-                                                            <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate></ComboBox.ItemTemplate>
-                                                        </ComboBox>
-                                                    </StackPanel>
-                                                </Grid>
-                                            </StackPanel>
                                         </Border>
                                     </StackPanel>
 
@@ -664,7 +637,7 @@
                                                 <TextBlock Text="数据来源与使用说明" FontSize="15" FontWeight="SemiBold" />
                                                 <Grid Margin="0,15,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="天气与定位" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="天气来自 Open-Meteo（CC BY 4.0），城市名由 BigDataCloud 解析。本项目使用免费非商业接口；商业再使用请自行取得适用许可。" FontSize="11" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" /></Grid>
                                                 <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,14" />
-                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="行情与 AI 用量" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="Yahoo Finance 行情与 Xiaomi MiMo 用量均为非官方实验性集成，可能延迟、不准确或失效，不构成投资建议。" FontSize="11" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" /></Grid>
+                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="行情与 AI 用量" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="Yahoo Finance 行情为非官方实验性集成。Codex 额度通过本机 Codex App Server 读取当前 ChatGPT 额度窗口；数据仅用于本机展示，不读取或导出登录凭据。" FontSize="11" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" /></Grid>
                                                 <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,14" />
                                                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="品牌与视觉资产" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="本应用与 Linx68 品牌、设备制造商及上述平台不存在隶属、授权、认可或赞助关系。应用与托盘图标为 AI 辅助创作的原创视觉资产，版权归 ZCat95 所有，详见 ASSET_LICENSE.md。" FontSize="11" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" /></Grid>
                                             </StackPanel>

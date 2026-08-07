@@ -9,7 +9,7 @@ public enum AppearanceMode
 
 public sealed class AppSettings
 {
-	public const int CurrentSettingsVersion = 3;
+	public const int CurrentSettingsVersion = 7;
 
 	public int SettingsVersion { get; set; } = CurrentSettingsVersion;
 
@@ -53,12 +53,6 @@ public sealed class AppSettings
 	public bool HasAcknowledgedCodexNotice { get; set; }
 
 	public bool AutoSwitchToMusic { get; set; }
-
-	public bool AutoMediaThemeSwitch { get; set; }
-
-	public string MediaPlayingThemeId { get; set; } = "music";
-
-	public string MediaIdleThemeId { get; set; } = "system";
 
 	public MusicSettings Music { get; set; } = new();
 

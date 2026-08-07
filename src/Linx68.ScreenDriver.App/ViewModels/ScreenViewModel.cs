@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Linx68.ScreenDriver.Core;
 
 namespace Linx68.ScreenDriver.App.ViewModels;
@@ -157,7 +158,8 @@ public sealed partial class ScreenViewModel : ObservableObject
         }
     }
 
-    public void SelectCategory(string categoryId)
+	[RelayCommand]
+	public void SelectCategory(string categoryId)
     {
         IsAllCategorySelected = string.Equals(categoryId, "all", StringComparison.OrdinalIgnoreCase);
         foreach (ThemeGroupViewModel group in ThemeGroups)

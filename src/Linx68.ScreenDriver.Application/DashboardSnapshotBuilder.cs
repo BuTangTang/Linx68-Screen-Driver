@@ -23,14 +23,14 @@ public sealed class DashboardSnapshotBuilder(
 
         SystemSnapshot system = await systemSource.ReadAsync(cancellationToken);
         MusicSnapshot effectiveMusic = music;
+        if (theme.Requires(ThemeDataRequirements.Music) && music.Available && musicEnricher is not null)
+        {
+            effectiveMusic = await musicEnricher.EnrichAsync(effectiveMusic, cancellationToken);
+        }
         if (theme.Requires(ThemeDataRequirements.Lyrics)
             && settings.Music?.EnableOnlineLyrics == true
-            && music.Available)
+            && effectiveMusic.Available)
         {
-            if (musicEnricher is not null)
-            {
-                effectiveMusic = await musicEnricher.EnrichAsync(effectiveMusic, cancellationToken);
-            }
             effectiveMusic = effectiveMusic with
             {
                 Lyrics = await lyricsSource.ReadAsync(effectiveMusic, cancellationToken)

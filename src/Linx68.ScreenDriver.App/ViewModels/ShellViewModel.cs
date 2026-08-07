@@ -58,7 +58,7 @@ public partial class ShellViewModel : ObservableObject
     {
         ShellPage.Screen => "选择要推送到 Linx68 屏幕的画面",
         ShellPage.Appearance => "调整应用外观与键盘屏幕的字体和强调色",
-        ShellPage.Automation => "设置推送频率和媒体主题切换",
+        ShellPage.Automation => "设置推送频率和播放时自动切换",
         ShellPage.Settings => "设备地址、安全区和启动行为",
         ShellPage.About => "版本、许可与数据来源",
         _ => string.Empty

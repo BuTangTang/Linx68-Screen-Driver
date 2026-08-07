@@ -8,7 +8,7 @@ public enum AiQuotaSourceKind
 
 public sealed class AiQuotaSettings
 {
-    public AiQuotaSourceKind SourceKind { get; set; } = AiQuotaSourceKind.XiaomiMiMoTokenPlanChina;
+    public AiQuotaSourceKind SourceKind { get; set; } = AiQuotaSourceKind.OpenAICodex;
 
-    public string DisplayName { get; set; } = "MiMo";
+    public string DisplayName { get; set; } = "Codex";
 }

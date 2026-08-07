@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Text.Json;
 using Linx68.ScreenDriver.Application;
 using Linx68.ScreenDriver.Core;
 using Linx68.ScreenDriver.Infrastructure;
@@ -13,8 +14,10 @@ Assert(defaults.MinimizeToTray && defaults.CloseToTray, "first-run tray defaults
 Assert(defaults.Weather.UseAutomaticLocation, "first-run weather must use automatic location");
 Assert(defaults.SafeArea == new ScreenInsets(10, 52, 10, 12), "first-run safe area is incorrect");
 Assert(defaults.AppearanceMode == AppearanceMode.System, "first-run appearance must follow Windows");
-Assert(defaults.AiQuota.SourceKind == AiQuotaSourceKind.XiaomiMiMoTokenPlanChina,
-    "first-run AI source must preserve the existing MiMo integration");
+Assert(defaults.AiQuota.SourceKind == AiQuotaSourceKind.OpenAICodex,
+    "first-run AI source must default to Codex rate limits");
+Assert(defaults.Music.EnableOnlineLyrics,
+    "first-run music settings must enable online lyrics");
 
 string codexTestRoot = Path.Combine(Path.GetTempPath(), "Linx68ScreenDriver", "codex-setup-" + Guid.NewGuid().ToString("N"));
 try
@@ -70,9 +73,17 @@ Console.WriteLine("PASS Windows media session ordering and NetEase identifiers")
 if (args.Contains("--music-probe", StringComparer.OrdinalIgnoreCase))
 {
     var liveMusic = await new WindowsMusicSnapshotSource().ReadAsync();
+    if (liveMusic.Available && WindowsMusicSessionSelector.IsNetEase(liveMusic.SourceAppId))
+    {
+        using var enricher = new NetEaseMusicSnapshotEnricher();
+        liveMusic = await enricher.EnrichAsync(liveMusic);
+        using var fallback = new LrcLibLyricsSnapshotSource();
+        using var lyricsSource = new NetEaseLyricsSnapshotSource(fallback);
+        liveMusic = liveMusic with { Lyrics = await lyricsSource.ReadAsync(liveMusic) };
+    }
     Console.WriteLine(liveMusic is null || !liveMusic.Available
         ? "PROBE music session: unavailable"
-        : $"PROBE music session: source={liveMusic.SourceAppId}; playing={liveMusic.IsPlaying}; title={liveMusic.Title}; artist={liveMusic.Artist}; position={liveMusic.Position:c}; duration={liveMusic.Duration:c}; artwork={liveMusic.Artwork is { Length: > 0 }}");
+        : $"PROBE music session: source={liveMusic.SourceAppId}; playing={liveMusic.IsPlaying}; title={liveMusic.Title}; artist={liveMusic.Artist}; position={liveMusic.Position:c}; duration={liveMusic.Duration:c}; artwork={liveMusic.Artwork is { Length: > 0 }}; lyrics={liveMusic.Lyrics.Available}; lyric-lines={liveMusic.Lyrics.Lines.Count}");
 }
 
 var profile = ScreenProfile.KeyboardDisplay;
@@ -82,7 +93,7 @@ Assert(profile.SafeArea.Top + profile.SafeArea.Bottom < profile.Height, "safe ar
 var renderer = new ScreenRenderer(profile);
 var themeDefinitions = BuiltInThemes.CreateDefinitions(new ImageTheme());
 var themes = themeDefinitions.Select(definition => definition.Theme).ToArray();
-Assert(themes.Length == 19, "built-in theme catalog should contain the 19 supported schemes");
+Assert(themes.Length == 18, "built-in theme catalog should contain the 18 supported schemes");
 Assert(themes.All(theme => theme.Id is not "calendar" and not "ambient"), "removed calendar/ambient themes must not be registered");
 Assert(themes.All(theme => theme.Id != "clock-seconds"), "removed seconds progress theme must not be registered");
 Assert(themes.All(theme => theme.Id != "week"), "removed week calendar theme must not be registered");
@@ -92,13 +103,19 @@ Assert(themes.Single(theme => theme.Id == "image").DisplayName == "图片时间"
 Assert(themes.Single(theme => theme.Id == "ai-quota").DisplayName == "AI 用量（测试版）", "AI quota theme must carry the Chinese test-version label");
 Assert(themes.Any(theme => theme.Id == "weather-five-day"), "five-day weather theme must be registered");
 Assert(themes.Any(theme => theme.Id == "stocks"), "stock theme must be registered");
-Assert(themes.Single(theme => theme.Id == "music-vinyl").DisplayName == "动态黑胶", "dynamic vinyl theme must be registered");
-Assert(themes.Single(theme => theme.Id == "music-cassette").DisplayName == "动态磁带", "dynamic cassette theme must be registered");
+Assert(themes.Where(theme => theme.Id.StartsWith("music", StringComparison.OrdinalIgnoreCase)).Select(theme => theme.Id)
+           .OrderBy(id => id)
+           .SequenceEqual(["music", "music-cover-focus", "music-lyric-focus", "music-pulse"])
+       && themes.All(theme => theme.Id is not "music-vinyl" and not "music-cassette" and not "music-minimal" and not "music-poster"),
+    "the music catalog must contain only the redesigned presentation variants");
 Assert(themes.Select(theme => theme.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() == themes.Length, "theme ids should be unique");
 Assert(themeDefinitions.All(definition => definition.Category != ThemeCategory.Other), "every built-in theme must declare a category");
 Assert(themeDefinitions.Single(definition => definition.Id == "image").IsStatic, "image theme must declare static rendering");
 Assert(themeDefinitions.Single(definition => definition.Id == "weather-five-day").Requires(ThemeDataRequirements.Weather), "weather theme must declare its data requirement");
-Assert(themeDefinitions.Single(definition => definition.Id == "music-vinyl").Requires(ThemeDataRequirements.Lyrics), "vinyl theme must declare its optional lyrics requirement");
+Assert(themeDefinitions.Single(definition => definition.Id == "music").Requires(ThemeDataRequirements.Lyrics), "music theme must declare its optional lyrics requirement");
+Assert(themeDefinitions.Where(definition => definition.Category == ThemeCategory.Music)
+           .All(definition => definition.Requires(ThemeDataRequirements.Music | ThemeDataRequirements.Lyrics)),
+    "all music presentation variants must request media and lyrics data");
 Assert(themeDefinitions.Single(definition => definition.Id == "stocks").Shows(ThemeSettingsSections.Stocks), "stock theme must expose stock settings");
 Console.WriteLine("PASS built-in theme metadata, requirements and settings sections");
 
@@ -106,11 +123,13 @@ var pipelineSystem = new StubSystemSnapshotSource();
 var pipelineLyrics = new StubLyricsSnapshotSource();
 var pipelineWeather = new StubWeatherSnapshotSource();
 var pipelineStocks = new StubStockSnapshotSource();
+var pipelineEnricher = new StubMusicSnapshotEnricher();
 var snapshotBuilder = new DashboardSnapshotBuilder(
     pipelineSystem,
     pipelineLyrics,
     pipelineWeather,
-    pipelineStocks);
+    pipelineStocks,
+    pipelineEnricher);
 var pipelineSettings = new AppSettings();
 var clockSnapshot = await snapshotBuilder.BuildAsync(
     themeDefinitions.Single(definition => definition.Id == "clock"),
@@ -119,16 +138,26 @@ var clockSnapshot = await snapshotBuilder.BuildAsync(
     effectiveWeatherSettings: null,
     aiQuota: null);
 Assert(clockSnapshot.Music is not null, "snapshot pipeline must preserve the supplied media snapshot");
-Assert(pipelineLyrics.ReadCount == 0 && pipelineWeather.ReadCount == 0 && pipelineStocks.ReadCount == 0,
+Assert(pipelineLyrics.ReadCount == 0 && pipelineEnricher.ReadCount == 0 && pipelineWeather.ReadCount == 0 && pipelineStocks.ReadCount == 0,
     "clock theme must not invoke optional data sources");
-pipelineSettings.Music.EnableOnlineLyrics = true;
-var vinylSnapshot = await snapshotBuilder.BuildAsync(
-    themeDefinitions.Single(definition => definition.Id == "music-vinyl"),
+pipelineSettings.Music.EnableOnlineLyrics = false;
+var musicArtworkSnapshot = await snapshotBuilder.BuildAsync(
+    themeDefinitions.Single(definition => definition.Id == "music"),
     pipelineSettings,
     SystemSnapshot.DesignSample.Music!,
     effectiveWeatherSettings: null,
     aiQuota: null);
-Assert(pipelineLyrics.ReadCount == 1 && vinylSnapshot.Music?.Lyrics.Available == true,
+Assert(pipelineEnricher.ReadCount == 1 && musicArtworkSnapshot.Music?.Artwork is { Length: > 0 }
+       && pipelineLyrics.ReadCount == 0,
+    "music theme must enrich album artwork even when lyrics are disabled");
+pipelineSettings.Music.EnableOnlineLyrics = true;
+var musicLyricsSnapshot = await snapshotBuilder.BuildAsync(
+    themeDefinitions.Single(definition => definition.Id == "music"),
+    pipelineSettings,
+    SystemSnapshot.DesignSample.Music!,
+    effectiveWeatherSettings: null,
+    aiQuota: null);
+Assert(pipelineEnricher.ReadCount == 2 && pipelineLyrics.ReadCount == 1 && musicLyricsSnapshot.Music?.Lyrics.Available == true,
     "lyrics-capable theme must invoke the lyrics source when enabled");
 _ = await snapshotBuilder.BuildAsync(
     themeDefinitions.Single(definition => definition.Id == "weather-five-day"),
@@ -160,9 +189,7 @@ var refreshService = new DashboardRefreshService(
     refreshWeatherResolver);
 var refreshSettings = new AppSettings
 {
-    AutoMediaThemeSwitch = true,
-    MediaPlayingThemeId = "music-vinyl",
-    MediaIdleThemeId = "system"
+    AutoSwitchToMusic = true
 };
 refreshSettings.Music.EnableOnlineLyrics = true;
 var refreshResult = await refreshService.RefreshAsync(new DashboardRefreshRequest(
@@ -171,12 +198,12 @@ var refreshResult = await refreshService.RefreshAsync(new DashboardRefreshReques
     "clock",
     "clock",
     _ => throw new InvalidOperationException("AI source must not be read for a music theme.")));
-Assert(refreshResult.EffectiveTheme.Id == "music-vinyl" && refreshResult.EffectiveThemeChanged,
-    "refresh service must resolve the configured playing-media theme");
+Assert(refreshResult.EffectiveTheme.Id == "music" && refreshResult.EffectiveThemeChanged,
+    "refresh service must switch to the music theme while media is playing");
 Assert(refreshLyrics.ReadCount == 1 && refreshWeatherResolver.ReadCount == 0,
     "refresh service must request only the metadata-required sources");
 
-refreshSettings.AutoMediaThemeSwitch = false;
+refreshSettings.AutoSwitchToMusic = false;
 int aiReadCount = 0;
 refreshResult = await refreshService.RefreshAsync(new DashboardRefreshRequest(
     themeDefinitions,
@@ -237,6 +264,37 @@ Assert(validEndpointResult.Success
 Console.WriteLine("PASS display push service validates and normalizes endpoints");
 
 var aiQuotaTheme = themes.Single(theme => theme.Id == "ai-quota");
+using var codexRateLimitDocument = JsonDocument.Parse(
+    """
+    {
+      "rateLimitsByLimitId": {
+        "codex": {
+          "limitId": "codex",
+          "primary": {
+            "usedPercent": 25,
+            "windowDurationMins": 10080,
+            "resetsAt": 1781654400
+          }
+        }
+      }
+    }
+    """);
+var codexQuota = CodexQuotaSnapshotSource.ParseRateLimits(codexRateLimitDocument.RootElement);
+Assert(codexQuota.PlatformName == "Codex"
+       && Math.Abs(codexQuota.ClampedRemainingPercent - 75) < 0.001
+       && codexQuota.ResetPeriod == AiResetPeriod.Weekly
+       && codexQuota.ResetsAt == DateTimeOffset.FromUnixTimeSeconds(1781654400),
+    "Codex rate-limit response must produce the remaining percentage and reset window");
+Console.WriteLine("PASS Codex rate-limit quota parsing");
+
+if (args.Contains("--codex-rate-probe", StringComparer.OrdinalIgnoreCase))
+{
+    var liveCodexQuota = await new CodexQuotaSnapshotSource().ReadAsync();
+    Assert(liveCodexQuota.Available && liveCodexQuota.PlatformName == "Codex",
+        "live Codex App Server rate-limit read must return a Codex quota snapshot");
+    Console.WriteLine("PASS live Codex rate-limit read");
+}
+
 var subscriptionQuota = AiQuotaSnapshot.ForSubscription(
     "ChatGPT",
     56,
@@ -305,11 +363,7 @@ using (var lyricSource = new LrcLibLyricsSnapshotSource(lyricClient))
 }
 Console.WriteLine("PASS LRCLIB search response and per-track cache");
 
-var netEaseSearchResponses = new Queue<string>(new[]
-{
-    """{"result":{"songs":[{"id":987654,"name":"Demo Track","artists":[{"name":"Demo Artist"}],"album":{"name":"Demo Album"},"duration":225000}]}}"""
-});
-var netEaseSearchHandler = new SequenceHandler(netEaseSearchResponses);
+var netEaseSearchHandler = new NetEaseArtworkHandler();
 using (var netEaseSearchClient = new HttpClient(netEaseSearchHandler))
 using (var netEaseEnricher = new NetEaseMusicSnapshotEnricher(netEaseSearchClient))
 {
@@ -320,11 +374,13 @@ using (var netEaseEnricher = new NetEaseMusicSnapshotEnricher(netEaseSearchClien
         Artist = "Demo Artist"
     };
     var enrichedMusic = await netEaseEnricher.EnrichAsync(netEaseMusic);
-    Assert(enrichedMusic.ProviderTrackId == 987654 && enrichedMusic.AlbumTitle == "Demo Album",
-        "NetEase search must resolve canonical metadata and its track ID");
+    Assert(enrichedMusic.ProviderTrackId == 987654 && enrichedMusic.AlbumTitle == "Demo Album"
+           && enrichedMusic.Artwork is { Length: > 0 },
+        "NetEase search must resolve canonical metadata, cover artwork and its track ID");
     var cachedMusic = await netEaseEnricher.EnrichAsync(netEaseMusic);
-    Assert(cachedMusic.ProviderTrackId == 987654 && netEaseSearchHandler.RequestCount == 1,
-        "NetEase metadata lookups must be cached per track");
+    Assert(cachedMusic.ProviderTrackId == 987654 && cachedMusic.Artwork is { Length: > 0 }
+           && netEaseSearchHandler.RequestCount == 3,
+        "NetEase metadata and artwork lookups must be cached per track");
 
     var netEaseLyricResponses = new Queue<string>(new[]
     {
@@ -346,14 +402,17 @@ var animatedMusic = SystemSnapshot.DesignSample.Music! with
     Lyrics = lyricSnapshot,
     SourceAppId = "Spotify.exe"
 };
-var vinylTheme = themes.Single(theme => theme.Id == "music-vinyl");
-var vinylFrameA = renderer.Render(vinylTheme, SystemSnapshot.DesignSample with { Music = animatedMusic });
-var vinylFrameB = renderer.Render(vinylTheme, SystemSnapshot.DesignSample with
+var musicTheme = themes.Single(theme => theme.Id == "music");
+var musicFrameA = renderer.Render(musicTheme, SystemSnapshot.DesignSample with
 {
-    Music = animatedMusic with { Position = TimeSpan.FromSeconds(11) }
+    Music = animatedMusic with { Lyrics = new LyricsSnapshot(true, [new LyricLine(TimeSpan.Zero, "第一句歌词")]) }
 });
-Assert(!vinylFrameA.JpegBytes.SequenceEqual(vinylFrameB.JpegBytes), "dynamic vinyl frames must change with playback position");
-Console.WriteLine("PASS dynamic vinyl frame changes with playback position");
+var musicFrameB = renderer.Render(musicTheme, SystemSnapshot.DesignSample with
+{
+    Music = animatedMusic with { Lyrics = new LyricsSnapshot(true, [new LyricLine(TimeSpan.Zero, "第二句歌词")]) }
+});
+Assert(!musicFrameA.JpegBytes.SequenceEqual(musicFrameB.JpegBytes), "music theme must render the current lyric below the progress bar");
+Console.WriteLine("PASS cover music theme renders the current lyric");
 
 var weatherResponses = new Queue<string>(new[]
 {
@@ -490,7 +549,7 @@ var settingsPath = Path.Combine(Path.GetTempPath(), $"keyboard-screen-settings-{
 try
 {
     var settingsStore = new JsonSettingsStore(settingsPath);
-    var settings = new AppSettings { AppearanceMode = AppearanceMode.Dark, SelectedThemeId = "music", RefreshSeconds = 17, AccentColor = "#A23BFF", SelectedFontId = "file:test.ttf|test", SafeArea = new ScreenInsets(11, 53, 9, 13), AiQuota = new AiQuotaSettings { DisplayName = "MiMo Pro" }, Weather = new WeatherSettings { LocationQuery = "上海", UseAutomaticLocation = true }, Stocks = new StockSettings { RedForGain = false, Items = [new StockItemSettings { Symbol = "0700.HK", Alias = "腾讯" }] }, Music = new MusicSettings { EnableOnlineLyrics = true, LyricOffsetSeconds = 1.5 }, ImageTimePlacement = ImageTimePlacement.Top, LaunchAtStartup = true, AutoMediaThemeSwitch = true, MediaPlayingThemeId = "music-vinyl", MediaIdleThemeId = "clock-neon" , HasCompletedOnboarding = true, HasAcknowledgedStockNotice = true, HasAcknowledgedMiMoNotice = true };
+    var settings = new AppSettings { AppearanceMode = AppearanceMode.Dark, SelectedThemeId = "music", RefreshSeconds = 17, AccentColor = "#A23BFF", SelectedFontId = "file:test.ttf|test", SafeArea = new ScreenInsets(11, 53, 9, 13), AiQuota = new AiQuotaSettings { SourceKind = AiQuotaSourceKind.OpenAICodex, DisplayName = "Codex Pro" }, Weather = new WeatherSettings { LocationQuery = "上海", UseAutomaticLocation = true }, Stocks = new StockSettings { RedForGain = false, Items = [new StockItemSettings { Symbol = "0700.HK", Alias = "腾讯" }] }, Music = new MusicSettings { EnableOnlineLyrics = true, LyricOffsetSeconds = 1.5 }, ImageTimePlacement = ImageTimePlacement.Top, LaunchAtStartup = true, AutoSwitchToMusic = true, HasCompletedOnboarding = true, HasAcknowledgedStockNotice = true, HasAcknowledgedCodexNotice = true };
     await settingsStore.SaveAsync(settings);
     var loadedSettings = await settingsStore.LoadAsync();
     Assert(loadedSettings.SelectedThemeId == "music", "settings theme did not persist");
@@ -499,23 +558,35 @@ try
     Assert(loadedSettings.AccentColor == "#A23BFF", "settings accent color did not persist");
     Assert(loadedSettings.SelectedFontId == "file:test.ttf|test", "settings font did not persist");
     Assert(loadedSettings.SafeArea == settings.SafeArea, "settings safe area did not persist");
-    Assert(loadedSettings.AiQuota.DisplayName == "MiMo Pro", "AI display name did not persist");
+    Assert(loadedSettings.AiQuota.SourceKind == AiQuotaSourceKind.OpenAICodex
+           && loadedSettings.AiQuota.DisplayName == "Codex Pro", "Codex AI display settings did not persist");
     Assert(loadedSettings.Weather.LocationQuery == "上海" && loadedSettings.Weather.UseAutomaticLocation, "weather location settings did not persist");
     Assert(loadedSettings.LaunchAtStartup, "launch-at-startup setting did not persist");
     Assert(loadedSettings.HasCompletedOnboarding, "onboarding completion did not persist");
-    Assert(loadedSettings.HasAcknowledgedStockNotice && loadedSettings.HasAcknowledgedMiMoNotice,
+    Assert(loadedSettings.HasAcknowledgedStockNotice && loadedSettings.HasAcknowledgedCodexNotice,
         "feature notice acknowledgements did not persist");
     Assert(!loadedSettings.Stocks.RedForGain && loadedSettings.Stocks.Items[0].Alias == "腾讯", "stock settings did not persist");
     Assert(loadedSettings.ImageTimePlacement == ImageTimePlacement.Top, "image time placement did not persist");
-    Assert(loadedSettings.AutoMediaThemeSwitch, "media theme automation flag did not persist");
-    Assert(loadedSettings.MediaPlayingThemeId == "music-vinyl", "playing theme did not persist");
+    Assert(loadedSettings.AutoSwitchToMusic, "auto switch to music setting did not persist");
     Assert(loadedSettings.Music.EnableOnlineLyrics && loadedSettings.Music.LyricOffsetSeconds == 1.5, "music settings did not persist");
-    Assert(loadedSettings.MediaIdleThemeId == "clock-neon", "idle theme did not persist");
     Assert(loadedSettings.SettingsVersion == AppSettings.CurrentSettingsVersion, "settings schema version did not persist");
     string settingsDirectory = Path.GetDirectoryName(settingsPath)!;
     string settingsFileName = Path.GetFileName(settingsPath);
     Assert(Directory.GetFiles(settingsDirectory, $"{settingsFileName}.*.tmp").Length == 0,
         "atomic settings save left a temporary file behind");
+
+    await File.WriteAllTextAsync(settingsPath, """
+    { "SettingsVersion": 3, "SelectedThemeId": "music-vinyl", "MediaPlayingThemeId": "music-minimal", "MediaIdleThemeId": "music-poster", "AiQuota": { "SourceKind": 0, "DisplayName": "MiMo" } }
+    """);
+    var migratedSettings = await settingsStore.LoadAsync();
+    Assert(migratedSettings.AiQuota.SourceKind == AiQuotaSourceKind.OpenAICodex
+           && migratedSettings.AiQuota.DisplayName == "Codex"
+           && migratedSettings.SelectedThemeId == "music",
+        "former MiMo and removed music themes must migrate to supported defaults");
+    using var persistedMigration = JsonDocument.Parse(await File.ReadAllTextAsync(settingsPath));
+    Assert(persistedMigration.RootElement.GetProperty("SettingsVersion").GetInt32() == AppSettings.CurrentSettingsVersion
+           && persistedMigration.RootElement.GetProperty("AiQuota").GetProperty("SourceKind").GetInt32() == (int)AiQuotaSourceKind.OpenAICodex,
+        "the Codex quota migration must be saved atomically for the next startup");
 
     await File.WriteAllTextAsync(settingsPath, "{ invalid json");
     var recoveredSettings = await settingsStore.LoadAsync();
@@ -541,23 +612,6 @@ finally
     }
 }
 
-var mediaAutomation = new AppSettings
-{
-    AutoMediaThemeSwitch = true,
-    MediaPlayingThemeId = "music-minimal",
-    MediaIdleThemeId = "dashboard"
-};
-Assert(MediaThemeAutomation.IsMusicThemeId("music-poster"), "music poster must be classified as a music theme");
-Assert(MediaThemeAutomation.IsMusicThemeId("music-vinyl"), "dynamic vinyl must be classified as a music theme");
-Assert(MediaThemeAutomation.IsMusicThemeId("music-cassette"), "dynamic cassette must be classified as a music theme");
-Assert(!MediaThemeAutomation.IsMusicThemeId("dashboard"), "dashboard must not be classified as a music theme");
-Assert(MediaThemeAutomation.ResolveThemeId(mediaAutomation, true, "clock") == "music-minimal", "playing media theme resolution failed");
-Assert(MediaThemeAutomation.ResolveThemeId(mediaAutomation, false, "clock") == "dashboard", "idle media theme resolution failed");
-mediaAutomation.MediaPlayingThemeId = "clock";
-mediaAutomation.MediaIdleThemeId = "music";
-Assert(MediaThemeAutomation.ResolveThemeId(mediaAutomation, true, "clock") == "music", "invalid playing theme must fall back to music");
-Assert(MediaThemeAutomation.ResolveThemeId(mediaAutomation, false, "clock") == "system", "invalid idle theme must fall back to system");
-Console.WriteLine("PASS bidirectional media theme automation");
 var fontTestFolder = Path.Combine(Path.GetTempPath(), $"keyboard-screen-fonts-{Guid.NewGuid():N}");
 Directory.CreateDirectory(fontTestFolder);
 try
@@ -717,6 +771,43 @@ sealed class RecordingHandler : HttpMessageHandler
     }
 }
 
+sealed class NetEaseArtworkHandler : HttpMessageHandler
+{
+    public int RequestCount { get; private set; }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        RequestCount++;
+        string requestUri = request.RequestUri?.AbsoluteUri ?? string.Empty;
+        if (requestUri.Contains("/api/search/get/web", StringComparison.Ordinal))
+        {
+            return Task.FromResult(Json("""{"result":{"songs":[{"id":987654,"name":"Demo Track","artists":[{"name":"Demo Artist"}],"album":{"name":"Demo Album"},"duration":225000}]}}"""));
+        }
+
+        if (requestUri.Contains("/api/song/detail", StringComparison.Ordinal))
+        {
+            return Task.FromResult(Json("""{"songs":[{"album":{"picUrl":"https://cover.test/demo.jpg"}}]}"""));
+        }
+
+        if (request.RequestUri?.Host == "cover.test")
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent([0xFF, 0xD8, 0xFF, 0xD9])
+            };
+            response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+            return Task.FromResult(response);
+        }
+
+        throw new InvalidOperationException("Unexpected NetEase request: " + requestUri);
+    }
+
+    private static HttpResponseMessage Json(string content) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(content)
+    };
+}
+
 sealed class StubSystemSnapshotSource : ISystemSnapshotSource
 {
     public ValueTask<SystemSnapshot> ReadAsync(CancellationToken cancellationToken = default) =>
@@ -740,6 +831,17 @@ sealed class StubLyricsSnapshotSource : ILyricsSnapshotSource
         [
             new LyricLine(TimeSpan.Zero, "Test lyric")
         ]));
+    }
+}
+
+sealed class StubMusicSnapshotEnricher : IMusicSnapshotEnricher
+{
+    public int ReadCount { get; private set; }
+
+    public Task<MusicSnapshot> EnrichAsync(MusicSnapshot music, CancellationToken cancellationToken = default)
+    {
+        ReadCount++;
+        return Task.FromResult(music with { Artwork = [0xFF, 0xD8, 0xFF, 0xD9] });
     }
 }
 

@@ -84,7 +84,11 @@ public partial class MainWindow : Window
 
 	private readonly CodexSetupService _codexSetupService = new();
 
+	private readonly IAiQuotaSnapshotSource _codexQuotaSource = new CodexQuotaSnapshotSource();
+
 	private AiQuotaSnapshot? _latestAiQuota;
+
+	private DateTimeOffset _nextCodexQuotaReadAt = DateTimeOffset.MinValue;
 
 	private SystemSnapshot? _latestSnapshot;
 
@@ -263,7 +267,7 @@ public partial class MainWindow : Window
 		_endpointParts = [EndpointIpPart1, EndpointIpPart2, EndpointIpPart3, EndpointIpPart4];
 		_themeDefinitions = BuiltInThemes.CreateDefinitions(_imageTheme, () => _settings.Music?.LyricOffsetSeconds ?? 0);
 		BuildThemeList();
-		PopulateMediaAutomationThemeSelectors();
+		LoadAutomationSettings();
 		_trayIcon = CreateTrayIcon();
 		SystemEvents.UserPreferenceChanged += SystemEvents_OnUserPreferenceChanged;
 		_timer = new DispatcherTimer
@@ -365,7 +369,7 @@ public partial class MainWindow : Window
 		{
 			_updatingAppearance = false;
 		}
-		PopulateMediaAutomationThemeSelectors();
+		LoadAutomationSettings();
 		_updatingSettingsPage = true;
 		try
 		{
@@ -463,7 +467,7 @@ public partial class MainWindow : Window
 	private async void Timer_OnTick(object? sender, EventArgs e)
 	{
 		bool selectedThemeIsStatic = GetSelectedThemeDefinition()?.IsStatic == true;
-		if (!_busy && (!selectedThemeIsStatic || _settings.AutoMediaThemeSwitch))
+		if (!_busy && (!selectedThemeIsStatic || _settings.AutoSwitchToMusic))
 		{
 			await RefreshPreviewAsync();
 			bool shouldPush = _settings.AutoPush || _mediaAutomationThemeChanged;
@@ -615,9 +619,7 @@ public partial class MainWindow : Window
 	{
 		if (ReadAiSourceKind() == AiQuotaSourceKind.OpenAICodex)
 		{
-			return _latestAiQuota is null
-				? AiQuotaSnapshot.Unavailable(ReadAiDisplayName())
-				: ApplyAiDisplayName(_latestAiQuota);
+			return await ReadCodexQuotaAsync(force: false, cancellationToken);
 		}
 
 		if (_miMoWindow == null)
@@ -627,7 +629,7 @@ public partial class MainWindow : Window
 		}
 		try
 		{
-			return UpdateMiMoUsage(await _miMoWindow.ReadAsync(cancellationToken));
+			return UpdateAiQuotaUsage(await _miMoWindow.ReadAsync(cancellationToken));
 		}
 		catch (Exception ex)
 		{
@@ -651,14 +653,39 @@ public partial class MainWindow : Window
 		{
 			Dispatcher.BeginInvoke((Action)delegate
 			{
-				UpdateMiMoUsage(snapshot);
+				UpdateAiQuotaUsage(snapshot);
 				ScheduleAutoCommit();
 			});
 		};
 		return _miMoWindow;
 	}
 
-	private AiQuotaSnapshot UpdateMiMoUsage(AiQuotaSnapshot snapshot)
+	private async Task<AiQuotaSnapshot> ReadCodexQuotaAsync(bool force, CancellationToken cancellationToken = default)
+	{
+		if (!force && _latestAiQuota is { Available: true } cached && DateTimeOffset.UtcNow < _nextCodexQuotaReadAt)
+		{
+			return ApplyAiDisplayName(cached);
+		}
+
+		AiSourceStatusText.Text = "正在读取 Codex 额度…";
+		try
+		{
+			AiQuotaSnapshot snapshot = await _codexQuotaSource.ReadAsync(cancellationToken);
+			_nextCodexQuotaReadAt = DateTimeOffset.UtcNow.AddSeconds(30);
+			return UpdateAiQuotaUsage(snapshot);
+		}
+		catch (Exception ex)
+		{
+			_nextCodexQuotaReadAt = DateTimeOffset.UtcNow.AddSeconds(10);
+			AiSourceStatusText.Text = ex.Message;
+			AiSourceStatusText.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 74, 84));
+			return _latestAiQuota is null
+				? AiQuotaSnapshot.Unavailable(ReadAiDisplayName())
+				: ApplyAiDisplayName(_latestAiQuota);
+		}
+	}
+
+	private AiQuotaSnapshot UpdateAiQuotaUsage(AiQuotaSnapshot snapshot)
 	{
 		snapshot = ApplyAiDisplayName(snapshot);
 		_latestAiQuota = snapshot;
@@ -668,6 +695,10 @@ public partial class MainWindow : Window
 		if (balance is not null)
 		{
 			MiMoCreditsValueText.Text = FormatCompactNumber(balance.Used) + " / " + FormatCompactNumber(balance.Limit);
+		}
+		else if (snapshot.Available)
+		{
+			MiMoCreditsValueText.Text = $"{100d - snapshot.ClampedRemainingPercent:0}% 已使用";
 		}
 		MiMoExpiryValueText.Text = snapshot.ResetsAt?.ToLocalTime().ToString("yyyy年M月d日") ?? "—";
 		AiSourceStatusText.Text = "已连接 · " + snapshot.PlatformName;
@@ -714,6 +745,7 @@ public partial class MainWindow : Window
 			AiDisplayNameTextBox.Text = GetDefaultAiDisplayName(sourceKind);
 		}
 		_latestAiQuota = null;
+		_nextCodexQuotaReadAt = DateTimeOffset.MinValue;
 		ResetAiQuotaDisplay();
 		UpdateAiSourceUi();
 		ScheduleAutoCommit();
@@ -725,7 +757,7 @@ public partial class MainWindow : Window
 		MiMoActionsPanel.Visibility = isCodex ? Visibility.Collapsed : Visibility.Visible;
 		CodexActionsPanel.Visibility = isCodex ? Visibility.Visible : Visibility.Collapsed;
 		AiSourceDescriptionText.Text = isCodex
-			? "Codex 使用本机登录。可迁移 config.toml 偏好；每台电脑都必须单独登录，绝不会导出 auth.json 或系统凭据。当前额度请在 Codex 会话中使用 /status 查看。"
+			? "通过本机 Codex App Server 读取当前 ChatGPT Codex 额度窗口与下次重置时间。身份认证仍由 Codex 管理，本应用不会读取、复制或导出 auth.json。"
 			: "China · 读取订阅套餐的真实 Credits，用量信息仅保存在本机。";
 	}
 
@@ -787,7 +819,7 @@ public partial class MainWindow : Window
 		AiSourceStatusText.Text = "正在读取 MiMo 用量…";
 		try
 		{
-			UpdateMiMoUsage(await _miMoWindow.ReadAsync(force: true));
+			UpdateAiQuotaUsage(await _miMoWindow.ReadAsync(force: true));
 			await CommitAndPushAsync();
 		}
 		catch (Exception ex)
@@ -867,13 +899,7 @@ public partial class MainWindow : Window
 
 	private async void CodexStatusButton_OnClick(object sender, RoutedEventArgs e)
 	{
-		AiSourceStatusText.Text = "正在检查 Codex 状态…";
-		CodexCliStatus status = await _codexSetupService.GetStatusAsync();
-		AiSourceStatusText.Text = status.Message;
-		AiSourceStatusText.Foreground = status.IsSignedIn
-			? (System.Windows.Media.Brush)FindResource("SecondaryText")
-			: new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 74, 84));
-		_latestAiQuota = AiQuotaSnapshot.Unavailable(ReadAiDisplayName());
+		await ReadCodexQuotaAsync(force: true);
 		await RefreshPreviewAsync();
 	}
 
@@ -968,6 +994,19 @@ public partial class MainWindow : Window
 		}
 		if (_loaded && !_suppressThemeRefresh)
 		{
+			if (_settings.AutoSwitchToMusic && definition.Category != ThemeCategory.Music)
+			{
+				_settings.AutoSwitchToMusic = false;
+				_updatingAutomation = true;
+				try
+				{
+					_automationViewModel.AutoSwitchToMusic = false;
+				}
+				finally
+				{
+					_updatingAutomation = false;
+				}
+			}
 			await ShowOneTimeFeatureNoticeAsync(id);
 			_settings.SelectedThemeId = id;
 			await CommitAndPushAsync();

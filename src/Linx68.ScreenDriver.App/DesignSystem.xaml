@@ -611,7 +611,6 @@
     </Style>
 
     <Style x:Key="ThemeCategoryRadio" TargetType="RadioButton">
-        <Setter Property="local:InteractionMotion.IsInteractive" Value="True" />
         <Setter Property="Foreground" Value="{DynamicResource SecondaryText}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Height" Value="42" />
