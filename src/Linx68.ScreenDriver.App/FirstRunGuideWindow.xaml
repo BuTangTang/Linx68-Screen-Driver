@@ -1,0 +1,60 @@
+<Window x:Class="Linx68.ScreenDriver.App.FirstRunGuideWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="连接键盘" Width="520" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="NoResize"
+        AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False"
+        FontFamily="{StaticResource UiFontFamily}"
+        Loaded="Window_OnLoaded" PreviewKeyDown="Window_OnPreviewKeyDown">
+    <Border x:Name="GuideCard" Margin="22" CornerRadius="18" Background="{DynamicResource Surface.Window}"
+            BorderBrush="{DynamicResource Stroke.Default}" BorderThickness="1" Opacity="0">
+        <Border.RenderTransform><TranslateTransform x:Name="GuideTranslate" Y="28" /></Border.RenderTransform>
+        <Border.Effect><DropShadowEffect BlurRadius="28" ShadowDepth="8" Opacity="0.16" Color="#27303C" /></Border.Effect>
+        <Grid Margin="30">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid>
+                <StackPanel>
+                    <TextBlock Text="连接你的 Linx68" FontSize="25" FontWeight="SemiBold" />
+                    <TextBlock Text="开启键盘图像 API，只需完成下面四步" Margin="0,7,0,0"
+                               FontSize="13" Foreground="{DynamicResource SecondaryText}" />
+                </StackPanel>
+                <Button x:Name="CloseButton" HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Width="44" Height="44" MinWidth="44" MinHeight="44" Padding="0"
+                        Content="×" FontSize="18" Click="LaterButton_OnClick" />
+            </Grid>
+            <StackPanel Grid.Row="1" Margin="0,24,0,0">
+                <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition /></Grid.ColumnDefinitions><Border Width="30" Height="30" CornerRadius="15" Background="{DynamicResource Surface.Pressed}" HorizontalAlignment="Left"><TextBlock Text="1" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" /></Border><TextBlock Grid.Column="1" Text="确保键盘连接到和电脑相同的局域网" VerticalAlignment="Center" FontSize="14" /></Grid>
+                <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition /></Grid.ColumnDefinitions><Border Width="30" Height="30" CornerRadius="15" Background="{DynamicResource Surface.Pressed}" HorizontalAlignment="Left"><TextBlock Text="2" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" /></Border><TextBlock Grid.Column="1" Text="单击旋钮进入菜单" VerticalAlignment="Center" FontSize="14" /></Grid>
+                <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition /></Grid.ColumnDefinitions><Border Width="30" Height="30" CornerRadius="15" Background="{DynamicResource Surface.Pressed}" HorizontalAlignment="Left"><TextBlock Text="3" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" /></Border><TextBlock Grid.Column="1" Text="旋转选择图像 API" VerticalAlignment="Center" FontSize="14" /></Grid>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition /></Grid.ColumnDefinitions><Border Width="30" Height="30" CornerRadius="15" Background="{DynamicResource Surface.Pressed}" HorizontalAlignment="Left"><TextBlock Text="4" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" /></Border><TextBlock Grid.Column="1" Text="扫码获取 IP 地址" VerticalAlignment="Center" FontSize="14" /></Grid>
+            </StackPanel>
+            <Border Grid.Row="2" Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,22,0,20" />
+            <StackPanel Grid.Row="3">
+                <TextBlock Text="设备 IP 地址" FontSize="14" FontWeight="SemiBold" />
+                <Border x:Name="IpAddressHost" Margin="0,12,0,0" Height="50" Background="White"
+                        BorderBrush="{DynamicResource Stroke.Default}" BorderThickness="1" CornerRadius="14">
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="1" /><ColumnDefinition /><ColumnDefinition Width="1" /><ColumnDefinition /><ColumnDefinition Width="1" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                        <TextBox x:Name="IpPart1" Tag="0" MaxLength="3" Height="48" Background="Transparent" BorderThickness="0" TextAlignment="Center" VerticalContentAlignment="Center" Padding="6,0" FontSize="17" PreviewTextInput="IpPart_OnPreviewTextInput" TextChanged="IpPart_OnTextChanged" PreviewKeyDown="IpPart_OnPreviewKeyDown" DataObject.Pasting="IpPart_OnPasting" />
+                        <Border Grid.Column="1" Width="1" Height="24" Background="{DynamicResource HairlineBrush}" VerticalAlignment="Center" />
+                        <TextBox x:Name="IpPart2" Grid.Column="2" Tag="1" MaxLength="3" Height="48" Background="Transparent" BorderThickness="0" TextAlignment="Center" VerticalContentAlignment="Center" Padding="6,0" FontSize="17" PreviewTextInput="IpPart_OnPreviewTextInput" TextChanged="IpPart_OnTextChanged" PreviewKeyDown="IpPart_OnPreviewKeyDown" DataObject.Pasting="IpPart_OnPasting" />
+                        <Border Grid.Column="3" Width="1" Height="24" Background="{DynamicResource HairlineBrush}" VerticalAlignment="Center" />
+                        <TextBox x:Name="IpPart3" Grid.Column="4" Tag="2" MaxLength="3" Height="48" Background="Transparent" BorderThickness="0" TextAlignment="Center" VerticalContentAlignment="Center" Padding="6,0" FontSize="17" PreviewTextInput="IpPart_OnPreviewTextInput" TextChanged="IpPart_OnTextChanged" PreviewKeyDown="IpPart_OnPreviewKeyDown" DataObject.Pasting="IpPart_OnPasting" />
+                        <Border Grid.Column="5" Width="1" Height="24" Background="{DynamicResource HairlineBrush}" VerticalAlignment="Center" />
+                        <TextBox x:Name="IpPart4" Grid.Column="6" Tag="3" MaxLength="3" Height="48" Background="Transparent" BorderThickness="0" TextAlignment="Center" VerticalContentAlignment="Center" Padding="6,0" FontSize="17" PreviewTextInput="IpPart_OnPreviewTextInput" TextChanged="IpPart_OnTextChanged" PreviewKeyDown="IpPart_OnPreviewKeyDown" DataObject.Pasting="IpPart_OnPasting" />
+                    </Grid>
+                </Border>
+                <TextBlock x:Name="ValidationText" MinHeight="18" Margin="0,8,0,0" FontSize="12" Foreground="{DynamicResource DangerBrush}" />
+            </StackPanel>
+            <Grid Grid.Row="4" Margin="0,18,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="12" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                <Button x:Name="LaterButton" Content="稍后设置" Height="48" Click="LaterButton_OnClick" />
+                <Button x:Name="SaveButton" Grid.Column="2" Content="保存并继续" Height="48" Click="SaveButton_OnClick" />
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

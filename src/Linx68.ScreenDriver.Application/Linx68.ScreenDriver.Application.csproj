@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Linx68.ScreenDriver.Core\Linx68.ScreenDriver.Core.csproj" />
+  </ItemGroup>
+</Project>

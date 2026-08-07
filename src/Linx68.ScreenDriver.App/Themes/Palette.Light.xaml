@@ -1,0 +1,33 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options">
+    <SolidColorBrush x:Key="AppBackground" po:Freeze="False" Color="#EEF0F2" />
+    <SolidColorBrush x:Key="CardBrush" po:Freeze="False" Color="#F7F8F9" />
+    <SolidColorBrush x:Key="AccentBrush" po:Freeze="False" Color="#E4694C" />
+    <SolidColorBrush x:Key="AccentHoverBrush" po:Freeze="False" Color="#F8E9E5" />
+    <SolidColorBrush x:Key="AccentPressedBrush" po:Freeze="False" Color="#F2DAD4" />
+    <SolidColorBrush x:Key="AccentSoftBrush" po:Freeze="False" Color="#F8ECE8" />
+    <SolidColorBrush x:Key="PrimaryText" po:Freeze="False" Color="#17191C" />
+    <SolidColorBrush x:Key="SecondaryText" po:Freeze="False" Color="#70767D" />
+    <SolidColorBrush x:Key="DisabledText" po:Freeze="False" Color="#A4A9AE" />
+    <SolidColorBrush x:Key="Surface.Window" po:Freeze="False" Color="#FBFCFD" />
+    <SolidColorBrush x:Key="Surface.Sidebar" po:Freeze="False" Color="#E8EAEC" />
+    <SolidColorBrush x:Key="Surface.Card" po:Freeze="False" Color="#F3F4F5" />
+    <SolidColorBrush x:Key="Surface.Control" po:Freeze="False" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="Surface.Hover" po:Freeze="False" Color="#E9EBED" />
+    <SolidColorBrush x:Key="Surface.Pressed" po:Freeze="False" Color="#DFE2E5" />
+    <SolidColorBrush x:Key="Surface.Screen" po:Freeze="False" Color="#050709" />
+    <SolidColorBrush x:Key="PreviewFrameBrush" po:Freeze="False" Color="#CDD1D5" />
+    <SolidColorBrush x:Key="PreviewOverlayBrush" po:Freeze="False" Color="#F6060A10" />
+    <SolidColorBrush x:Key="Stroke.Default" po:Freeze="False" Color="#D2D6DA" />
+    <SolidColorBrush x:Key="Stroke.Strong" po:Freeze="False" Color="#AEB4BA" />
+    <SolidColorBrush x:Key="HairlineBrush" po:Freeze="False" Color="#DEE1E4" />
+    <SolidColorBrush x:Key="DangerBrush" po:Freeze="False" Color="#CF4C4C" />
+    <SolidColorBrush x:Key="SuccessBrush" po:Freeze="False" Color="#1EAD6A" />
+    <SolidColorBrush x:Key="TitleBarForeground" po:Freeze="False" Color="#202327" />
+    <SolidColorBrush x:Key="SwitchTrackBrush" po:Freeze="False" Color="#C4C9CE" />
+    <SolidColorBrush x:Key="ControlThumbBrush" po:Freeze="False" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SliderTrackBrush" po:Freeze="False" Color="#D3D7DB" />
+    <SolidColorBrush x:Key="ScrollThumbBrush" po:Freeze="False" Color="#A8AEB5" />
+    <SolidColorBrush x:Key="ScrollThumbHoverBrush" po:Freeze="False" Color="#777F87" />
+</ResourceDictionary>

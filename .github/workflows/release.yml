@@ -1,0 +1,76 @@
+name: Build and publish release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build Windows portable package
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore Linx68.ScreenDriver.sln
+
+      - name: Build
+        run: dotnet build Linx68.ScreenDriver.sln -c Release --no-restore
+
+      - name: Run renderer smoke tests
+        run: dotnet run --project tests/Linx68.ScreenDriver.SmokeTests/Linx68.ScreenDriver.SmokeTests.csproj -c Release --no-build
+
+      - name: Run UI smoke tests
+        run: dotnet run --project tests/Linx68.ScreenDriver.UiSmokeTests/Linx68.ScreenDriver.UiSmokeTests.csproj -c Release --no-build
+
+      - name: Build clean portable package
+        shell: pwsh
+        run: ./tools/Publish-Portable.ps1
+
+      - name: Create release archive and checksum
+        id: package
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $archiveName = "Linx68ScreenDriver-$tag-win-x64.zip"
+          $checksumName = "$archiveName.sha256.txt"
+          $archivePath = Join-Path $env:RUNNER_TEMP $archiveName
+          $checksumPath = Join-Path $env:RUNNER_TEMP $checksumName
+
+          Compress-Archive `
+            -Path "artifacts/Linx68ScreenDriver-Portable/*" `
+            -DestinationPath $archivePath `
+            -CompressionLevel Optimal
+
+          $hash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $archiveName" | Set-Content -LiteralPath $checksumPath -Encoding utf8
+
+          "archive=$archivePath" >> $env:GITHUB_OUTPUT
+          "checksum=$checksumPath" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:GITHUB_REF_NAME `
+            "${{ steps.package.outputs.archive }}" `
+            "${{ steps.package.outputs.checksum }}" `
+            --verify-tag `
+            --title "Linx68 Screen Driver $env:GITHUB_REF_NAME" `
+            --notes-file RELEASE_NOTES.md

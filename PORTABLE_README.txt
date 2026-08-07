@@ -1,0 +1,25 @@
+﻿灵犀68屏幕驱动绿色版
+
+1. 双击 Linx68ScreenDriver.exe 启动，无需安装 .NET。
+2. 首次启动时程序会自动创建 Data 文件夹并保存本机配置。
+3. 将获得合法使用权的 TTF 或 OTF 字体放入 Fonts 文件夹后，程序会自动识别。
+4. 程序通过 HTTP POST 将 JPEG 直接推送到键盘设备。
+
+隐私提醒
+
+- Data\settings.json 包含设备地址、城市、股票代码和本地图片路径。
+- Data\MiMoWebView2 包含小米登录浏览器资料，不要分享或上传 Data 文件夹。
+- 关闭程序后删除 Data\MiMoWebView2 可清除本地保存的小米登录状态。
+- 设备传输为未加密 HTTP，只应在可信本地网络中使用。
+
+第三方服务
+
+- 天气数据由 Open-Meteo 提供，采用 CC BY 4.0：
+  https://open-meteo.com/en/license
+- Yahoo Finance 股票数据与 Xiaomi MiMo 用量功能均为非官方实验性集成，可能延迟、不准确或失效。
+- 股票数据仅供信息展示，不构成投资建议。
+- 本项目与 Linx68 品牌、设备制造商及上述平台不存在隶属、授权、认可或赞助关系。
+
+许可证
+
+项目源码采用 MIT License。应用图标与托盘图标采用单独的视觉资产许可。完整项目许可、隐私说明及第三方许可文件随程序提供。

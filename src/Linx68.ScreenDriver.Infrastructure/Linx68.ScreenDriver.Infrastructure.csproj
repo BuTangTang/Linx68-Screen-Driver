@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Linx68.ScreenDriver.Application\Linx68.ScreenDriver.Application.csproj" />
+    <ProjectReference Include="..\Linx68.ScreenDriver.Core\Linx68.ScreenDriver.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Linx68.ScreenDriver.SmokeTests" />
+  </ItemGroup>
+</Project>

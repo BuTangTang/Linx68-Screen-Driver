@@ -1,0 +1,63 @@
+<Window x:Class="Linx68.ScreenDriver.App.FeatureNoticeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="功能说明" Width="520" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="NoResize"
+        AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False"
+        FontFamily="{StaticResource UiFontFamily}"
+        Loaded="Window_OnLoaded" PreviewKeyDown="Window_OnPreviewKeyDown">
+    <Border x:Name="NoticeCard" Margin="22" CornerRadius="18" Background="{DynamicResource Surface.Window}"
+            BorderBrush="{DynamicResource Stroke.Default}" BorderThickness="1" Opacity="0">
+        <Border.RenderTransform>
+            <TranslateTransform x:Name="NoticeTranslate" Y="28" />
+        </Border.RenderTransform>
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="28" ShadowDepth="8" Opacity="0.16" Color="#27303C" />
+        </Border.Effect>
+        <Grid Margin="30">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid>
+                <StackPanel Margin="0,0,64,0">
+                    <TextBlock x:Name="TitleText" FontSize="25" FontWeight="SemiBold" />
+                    <TextBlock x:Name="SubtitleText" Margin="0,7,0,0" FontSize="13"
+                               Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" />
+                </StackPanel>
+                <Button x:Name="CloseButton" HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Width="44" Height="44" MinWidth="44" MinHeight="44" Padding="0"
+                        Content="×" FontSize="18" Click="AcknowledgeButton_OnClick" />
+            </Grid>
+
+            <Border Grid.Row="1" Margin="0,24,0,0" Padding="20"
+                    Background="{DynamicResource Surface.Pressed}" CornerRadius="16">
+                <StackPanel>
+                    <TextBlock x:Name="BodyText" FontSize="14" TextWrapping="Wrap" LineHeight="22" />
+                    <ItemsControl x:Name="DetailsList" Margin="0,16,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="18" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Width="5" Height="5" Fill="{DynamicResource SecondaryText}"
+                                             HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding}" FontSize="13"
+                                               Foreground="{DynamicResource SecondaryText}"
+                                               TextWrapping="Wrap" LineHeight="20" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Button x:Name="AcknowledgeButton" Grid.Row="2" Height="48" Margin="0,18,0,0"
+                    Content="了解并继续" Click="AcknowledgeButton_OnClick" />
+        </Grid>
+    </Border>
+</Window>

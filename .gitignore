@@ -1,0 +1,32 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.pdb
+TestResults/
+artifacts/
+dist/
+release/
+archive/
+
+# Runtime state and browser sign-in data must never enter source control.
+**/Data/
+**/MiMoWebView2/
+**/settings.json
+
+# User-provided fonts are local content. Doto is the only bundled font.
+*.ttf
+*.otf
+*.ttc
+!src/KeyboardScreen.Core/Assets/Fonts/Doto.ttf
+
+# Generated archives are rebuilt from source when needed.
+showcase/*.zip
+
+src/KeyboardScreen.App/Assets/Fonts/PingFang.ttc
+
+# Internal AI handoff documents are not public project material.
+AI_CONTEXT.md
+AI_CHANGELOG.md
+PROJECT_CONTEXT.md
