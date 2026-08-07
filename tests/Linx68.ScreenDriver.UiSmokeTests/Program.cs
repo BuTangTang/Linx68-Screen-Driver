@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.IO;
 using Linx68.ScreenDriver.App;
+using Linx68.ScreenDriver.App.ViewModels;
 using Linx68.ScreenDriver.Core;
 using System.Windows.Threading;
 
@@ -27,6 +28,7 @@ internal static class Program
             $"control UI font must use the Windows system stack: {uiFont.Source}");
         Console.WriteLine($"PASS UI font stack {uiFont.Source}");
         VerifyAppearancePalettes();
+        VerifyShellNavigationViewModel();
 
         VerifyTextBox(app, 44, new Thickness(14, 0, 14, 0), "\u5317\u4EAC Ag09");
         VerifyTextBox(app, 40, new Thickness(6, 0, 6, 0), "\u5317\u4EAC Ag09");
@@ -54,6 +56,19 @@ internal static class Program
         }
 
         Console.WriteLine("All UI smoke tests passed.");
+    }
+
+    private static void VerifyShellNavigationViewModel()
+    {
+        var viewModel = new ShellViewModel();
+        Assert(viewModel.IsScreenPage && viewModel.PageTitle == "显示方案",
+            "shell must start on the display-scheme page");
+        viewModel.NavigateCommand.Execute("appearance");
+        Assert(viewModel.IsAppearancePage
+               && !viewModel.IsScreenPage
+               && viewModel.PageTitle == "外观",
+            "shell navigation command must update page state and title");
+        Console.WriteLine("PASS MVVM shell navigation state and command");
     }
 
     private static void CaptureMainWindow(string path, int width, int height, bool dark, bool appearance)

@@ -1,10 +1,15 @@
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Threading;
+using Linx68.ScreenDriver.App.ViewModels;
+using Linx68.ScreenDriver.Application;
 using Linx68.ScreenDriver.Core;
 using Linx68.ScreenDriver.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Linx68.ScreenDriver.App;
 
@@ -15,6 +20,7 @@ public partial class App : System.Windows.Application
     private Mutex? _instanceMutex;
     private EventWaitHandle? _activationEvent;
     private CancellationTokenSource? _activationCancellation;
+    private IHost? _host;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -33,9 +39,29 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        var initialSettings = new JsonSettingsStore().LoadAsync().GetAwaiter().GetResult();
+        var settingsStore = new JsonSettingsStore();
+        var initialSettings = settingsStore.LoadAsync().GetAwaiter().GetResult();
         AppearanceManager.Apply(initialSettings.AppearanceMode);
-        var window = new MainWindow(initialSettings);
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton(initialSettings);
+        builder.Services.AddSingleton<ISettingsStore>(settingsStore);
+        builder.Services.AddSingleton<ISystemSnapshotSource, WindowsSystemSnapshotSource>();
+        builder.Services.AddSingleton<IMusicSnapshotSource, WindowsMusicSnapshotSource>();
+        builder.Services.AddSingleton<ILyricsSnapshotSource, LrcLibLyricsSnapshotSource>();
+        builder.Services.AddSingleton<IWeatherSnapshotSource, OpenMeteoWeatherSnapshotSource>();
+        builder.Services.AddSingleton<IStockSnapshotSource, YahooStockSnapshotSource>();
+        builder.Services.AddSingleton<IDeviceTransport, HttpImageDeviceTransport>();
+        builder.Services.AddSingleton<IDashboardSnapshotBuilder, DashboardSnapshotBuilder>();
+        builder.Services.AddSingleton<WindowsWeatherLocationProvider>();
+        builder.Services.AddSingleton<ImageTheme>();
+        builder.Services.AddSingleton<ShellViewModel>();
+        builder.Services.AddSingleton(_ => new FontFolderCatalog(
+            Path.Combine(AppContext.BaseDirectory, "Fonts")));
+        builder.Services.AddSingleton<MainWindow>();
+        _host = builder.Build();
+        _host.Start();
+
+        var window = _host.Services.GetRequiredService<MainWindow>();
         MainWindow = window;
         window.Title = "灵犀68屏幕驱动";
         window.ShowInTaskbar = true;
@@ -161,6 +187,12 @@ public partial class App : System.Windows.Application
         }
         _activationEvent?.Dispose();
         _activationCancellation?.Dispose();
+        if (_host is not null)
+        {
+            _host.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+            _host.Dispose();
+            _host = null;
+        }
         try
         {
             _instanceMutex?.ReleaseMutex();

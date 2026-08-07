@@ -3,15 +3,17 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Linx68.ScreenDriver.Application;
 using Linx68.ScreenDriver.Core;
 
 namespace Linx68.ScreenDriver.Infrastructure;
 
-public sealed class JsonSettingsStore
+public sealed class JsonSettingsStore : ISettingsStore
 {
 	private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
 	{
-		WriteIndented = true
+		WriteIndented = true,
+		PropertyNameCaseInsensitive = true
 	};
 
 	public string Path { get; }
@@ -51,54 +53,100 @@ public sealed class JsonSettingsStore
 		return currentPath;
 	}
 
-	public async Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default(CancellationToken))
+	public async Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default)
 	{
-		_ = 1;
 		try
 		{
 			if (!File.Exists(Path))
 			{
 				return new AppSettings();
 			}
-			FileStream stream = File.OpenRead(Path);
-			AppSettings result;
-			try
-			{
-				result = (await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions, cancellationToken)) ?? new AppSettings();
-			}
-			finally
-			{
-				if (stream != null)
-				{
-					await stream.DisposeAsync();
-				}
-			}
-			return result;
+
+			await using FileStream stream = File.OpenRead(Path);
+			AppSettings settings = await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions, cancellationToken)
+				?? new AppSettings();
+			return Normalize(settings);
 		}
-		catch
+		catch (JsonException)
+		{
+			PreserveInvalidSettings();
+			return new AppSettings();
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 		{
 			return new AppSettings();
 		}
 	}
 
-	public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default(CancellationToken))
+	public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
 	{
+		ArgumentNullException.ThrowIfNull(settings);
+		Normalize(settings);
 		string? directoryName = System.IO.Path.GetDirectoryName(Path);
 		if (!string.IsNullOrWhiteSpace(directoryName))
 		{
 			Directory.CreateDirectory(directoryName);
 		}
-		FileStream stream = File.Create(Path);
+
+		string temporaryPath = $"{Path}.{Guid.NewGuid():N}.tmp";
 		try
 		{
-			await JsonSerializer.SerializeAsync(stream, settings, JsonOptions, cancellationToken);
+			await using (var stream = new FileStream(
+				temporaryPath,
+				FileMode.CreateNew,
+				FileAccess.Write,
+				FileShare.None,
+				bufferSize: 4096,
+				FileOptions.Asynchronous | FileOptions.WriteThrough))
+			{
+				await JsonSerializer.SerializeAsync(stream, settings, JsonOptions, cancellationToken);
+				await stream.FlushAsync(cancellationToken);
+			}
+
+			File.Move(temporaryPath, Path, overwrite: true);
 		}
 		finally
 		{
-			if (stream != null)
+			if (File.Exists(temporaryPath))
 			{
-				await stream.DisposeAsync();
+				File.Delete(temporaryPath);
 			}
+		}
+	}
+
+	private static AppSettings Normalize(AppSettings settings)
+	{
+		settings.SettingsVersion = AppSettings.CurrentSettingsVersion;
+		settings.DeviceEndpoint ??= string.Empty;
+		settings.SelectedThemeId ??= "clock-dot-matrix";
+		settings.AccentColor ??= "#E4694C";
+		settings.SelectedFontId ??= "builtin:segoe-variable-display";
+		settings.MediaPlayingThemeId ??= "music";
+		settings.MediaIdleThemeId ??= "system";
+		settings.SafeArea ??= new ScreenInsets(10, 52, 10, 12);
+		settings.Music ??= new MusicSettings();
+		settings.AiQuota ??= new AiQuotaSettings();
+		settings.Weather ??= new WeatherSettings();
+		settings.Stocks ??= new StockSettings();
+		settings.RefreshSeconds = Math.Clamp(settings.RefreshSeconds, 1, 30);
+		return settings;
+	}
+
+	private void PreserveInvalidSettings()
+	{
+		try
+		{
+			if (!File.Exists(Path))
+			{
+				return;
+			}
+
+			string backupPath = $"{Path}.invalid-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}.json";
+			File.Copy(Path, backupPath, overwrite: false);
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+		{
+			// Loading still falls back to defaults when the invalid file cannot be preserved.
 		}
 	}
 }

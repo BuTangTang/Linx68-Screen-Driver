@@ -45,8 +45,9 @@ Assert(profile.SafeArea.Top == 52, "keyboard firmware safe area must reserve the
 Assert(profile.SafeArea.Left + profile.SafeArea.Right < profile.Width, "safe area horizontal insets are invalid");
 Assert(profile.SafeArea.Top + profile.SafeArea.Bottom < profile.Height, "safe area vertical insets are invalid");
 var renderer = new ScreenRenderer(profile);
-var themes = BuiltInThemes.Create(new ImageTheme());
-Assert(themes.Count == 19, "built-in theme catalog should contain the 19 supported schemes");
+var themeDefinitions = BuiltInThemes.CreateDefinitions(new ImageTheme());
+var themes = themeDefinitions.Select(definition => definition.Theme).ToArray();
+Assert(themes.Length == 19, "built-in theme catalog should contain the 19 supported schemes");
 Assert(themes.All(theme => theme.Id is not "calendar" and not "ambient"), "removed calendar/ambient themes must not be registered");
 Assert(themes.All(theme => theme.Id != "clock-seconds"), "removed seconds progress theme must not be registered");
 Assert(themes.All(theme => theme.Id != "week"), "removed week calendar theme must not be registered");
@@ -58,7 +59,51 @@ Assert(themes.Any(theme => theme.Id == "weather-five-day"), "five-day weather th
 Assert(themes.Any(theme => theme.Id == "stocks"), "stock theme must be registered");
 Assert(themes.Single(theme => theme.Id == "music-vinyl").DisplayName == "动态黑胶", "dynamic vinyl theme must be registered");
 Assert(themes.Single(theme => theme.Id == "music-cassette").DisplayName == "动态磁带", "dynamic cassette theme must be registered");
-Assert(themes.Select(theme => theme.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() == themes.Count, "theme ids should be unique");
+Assert(themes.Select(theme => theme.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() == themes.Length, "theme ids should be unique");
+Assert(themeDefinitions.All(definition => definition.Category != ThemeCategory.Other), "every built-in theme must declare a category");
+Assert(themeDefinitions.Single(definition => definition.Id == "image").IsStatic, "image theme must declare static rendering");
+Assert(themeDefinitions.Single(definition => definition.Id == "weather-five-day").Requires(ThemeDataRequirements.Weather), "weather theme must declare its data requirement");
+Assert(themeDefinitions.Single(definition => definition.Id == "music-vinyl").Requires(ThemeDataRequirements.Lyrics), "vinyl theme must declare its optional lyrics requirement");
+Assert(themeDefinitions.Single(definition => definition.Id == "stocks").Shows(ThemeSettingsSections.Stocks), "stock theme must expose stock settings");
+Console.WriteLine("PASS built-in theme metadata, requirements and settings sections");
+
+var pipelineSystem = new StubSystemSnapshotSource();
+var pipelineLyrics = new StubLyricsSnapshotSource();
+var pipelineWeather = new StubWeatherSnapshotSource();
+var pipelineStocks = new StubStockSnapshotSource();
+var snapshotBuilder = new DashboardSnapshotBuilder(
+    pipelineSystem,
+    pipelineLyrics,
+    pipelineWeather,
+    pipelineStocks);
+var pipelineSettings = new AppSettings();
+var clockSnapshot = await snapshotBuilder.BuildAsync(
+    themeDefinitions.Single(definition => definition.Id == "clock"),
+    pipelineSettings,
+    SystemSnapshot.DesignSample.Music!,
+    effectiveWeatherSettings: null,
+    aiQuota: null);
+Assert(clockSnapshot.Music is not null, "snapshot pipeline must preserve the supplied media snapshot");
+Assert(pipelineLyrics.ReadCount == 0 && pipelineWeather.ReadCount == 0 && pipelineStocks.ReadCount == 0,
+    "clock theme must not invoke optional data sources");
+pipelineSettings.Music.EnableOnlineLyrics = true;
+var vinylSnapshot = await snapshotBuilder.BuildAsync(
+    themeDefinitions.Single(definition => definition.Id == "music-vinyl"),
+    pipelineSettings,
+    SystemSnapshot.DesignSample.Music!,
+    effectiveWeatherSettings: null,
+    aiQuota: null);
+Assert(pipelineLyrics.ReadCount == 1 && vinylSnapshot.Music?.Lyrics.Available == true,
+    "lyrics-capable theme must invoke the lyrics source when enabled");
+_ = await snapshotBuilder.BuildAsync(
+    themeDefinitions.Single(definition => definition.Id == "weather-five-day"),
+    pipelineSettings,
+    SystemSnapshot.DesignSample.Music!,
+    new WeatherSettings { LocationQuery = "北京" },
+    aiQuota: null);
+Assert(pipelineWeather.ReadCount == 1 && pipelineStocks.ReadCount == 0,
+    "weather theme must invoke only the weather source");
+Console.WriteLine("PASS metadata-driven dashboard snapshot pipeline");
 
 var aiQuotaTheme = themes.Single(theme => theme.Id == "ai-quota");
 var subscriptionQuota = AiQuotaSnapshot.ForSubscription(
@@ -300,11 +345,34 @@ try
     Assert(loadedSettings.MediaPlayingThemeId == "music-vinyl", "playing theme did not persist");
     Assert(loadedSettings.Music.EnableOnlineLyrics && loadedSettings.Music.LyricOffsetSeconds == 1.5, "music settings did not persist");
     Assert(loadedSettings.MediaIdleThemeId == "clock-neon", "idle theme did not persist");
-    Console.WriteLine("PASS settings JSON round-trip");
+    Assert(loadedSettings.SettingsVersion == AppSettings.CurrentSettingsVersion, "settings schema version did not persist");
+    string settingsDirectory = Path.GetDirectoryName(settingsPath)!;
+    string settingsFileName = Path.GetFileName(settingsPath);
+    Assert(Directory.GetFiles(settingsDirectory, $"{settingsFileName}.*.tmp").Length == 0,
+        "atomic settings save left a temporary file behind");
+
+    await File.WriteAllTextAsync(settingsPath, "{ invalid json");
+    var recoveredSettings = await settingsStore.LoadAsync();
+    Assert(recoveredSettings.SettingsVersion == AppSettings.CurrentSettingsVersion
+           && recoveredSettings.SelectedThemeId == "clock-dot-matrix",
+        "invalid settings must recover to current defaults");
+    Assert(Directory.GetFiles(settingsDirectory, $"{settingsFileName}.invalid-*.json").Length == 1,
+        "invalid settings file must be preserved for diagnostics");
+    Console.WriteLine("PASS versioned atomic settings save, round-trip and invalid-file recovery");
 }
 finally
 {
     if (File.Exists(settingsPath)) File.Delete(settingsPath);
+    string? settingsDirectory = Path.GetDirectoryName(settingsPath);
+    if (settingsDirectory is not null)
+    {
+        foreach (string invalidBackup in Directory.GetFiles(
+                     settingsDirectory,
+                     $"{Path.GetFileName(settingsPath)}.invalid-*.json"))
+        {
+            File.Delete(invalidBackup);
+        }
+    }
 }
 
 var mediaAutomation = new AppSettings
@@ -480,5 +548,53 @@ sealed class RecordingHandler : HttpMessageHandler
         {
             Content = new StringContent(ResponseBody)
         };
+    }
+}
+
+sealed class StubSystemSnapshotSource : ISystemSnapshotSource
+{
+    public ValueTask<SystemSnapshot> ReadAsync(CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(SystemSnapshot.DesignSample with
+        {
+            Music = null,
+            AiQuota = null,
+            Weather = null,
+            Stocks = null
+        });
+}
+
+sealed class StubLyricsSnapshotSource : ILyricsSnapshotSource
+{
+    public int ReadCount { get; private set; }
+
+    public Task<LyricsSnapshot> ReadAsync(MusicSnapshot music, CancellationToken cancellationToken = default)
+    {
+        ReadCount++;
+        return Task.FromResult(new LyricsSnapshot(true,
+        [
+            new LyricLine(TimeSpan.Zero, "Test lyric")
+        ]));
+    }
+}
+
+sealed class StubWeatherSnapshotSource : IWeatherSnapshotSource
+{
+    public int ReadCount { get; private set; }
+
+    public Task<WeatherSnapshot> ReadAsync(WeatherSettings settings, CancellationToken cancellationToken = default)
+    {
+        ReadCount++;
+        return Task.FromResult(SystemSnapshot.DesignSample.Weather!);
+    }
+}
+
+sealed class StubStockSnapshotSource : IStockSnapshotSource
+{
+    public int ReadCount { get; private set; }
+
+    public Task<StockSnapshot> ReadAsync(StockSettings settings, CancellationToken cancellationToken = default)
+    {
+        ReadCount++;
+        return Task.FromResult(StockSnapshot.Empty);
     }
 }

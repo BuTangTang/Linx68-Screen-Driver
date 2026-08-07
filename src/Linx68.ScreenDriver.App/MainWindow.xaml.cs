@@ -18,6 +18,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Resources;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using Linx68.ScreenDriver.App.ViewModels;
 using Linx68.ScreenDriver.Application;
 using Linx68.ScreenDriver.Core;
 using Linx68.ScreenDriver.Infrastructure;
@@ -27,25 +28,29 @@ namespace Linx68.ScreenDriver.App;
 
 public partial class MainWindow : Window
 {
-	private readonly ISystemSnapshotSource _systemSource = new WindowsSystemSnapshotSource();
+	private readonly ISystemSnapshotSource _systemSource;
 
-	private readonly IMusicSnapshotSource _musicSource = new WindowsMusicSnapshotSource();
+	private readonly IMusicSnapshotSource _musicSource;
 
-	private readonly LrcLibLyricsSnapshotSource _lyricsSource = new LrcLibLyricsSnapshotSource();
+	private readonly ILyricsSnapshotSource _lyricsSource;
 
-	private readonly OpenMeteoWeatherSnapshotSource _weatherSource = new OpenMeteoWeatherSnapshotSource();
+	private readonly IWeatherSnapshotSource _weatherSource;
 
-	private readonly WindowsWeatherLocationProvider _weatherLocationProvider = new WindowsWeatherLocationProvider();
+	private readonly WindowsWeatherLocationProvider _weatherLocationProvider;
 
-	private readonly YahooStockSnapshotSource _stockSource = new YahooStockSnapshotSource();
+	private readonly IStockSnapshotSource _stockSource;
 
-	private readonly HttpImageDeviceTransport _transport = new HttpImageDeviceTransport();
+	private readonly IDashboardSnapshotBuilder _snapshotBuilder;
 
-	private readonly JsonSettingsStore _settingsStore = new JsonSettingsStore();
+	private readonly IDeviceTransport _transport;
 
-	private readonly ImageTheme _imageTheme = new ImageTheme();
+	private readonly ISettingsStore _settingsStore;
 
-	private readonly FontFolderCatalog _fontCatalog = new FontFolderCatalog(System.IO.Path.Combine(AppContext.BaseDirectory, "Fonts"));
+	private readonly ImageTheme _imageTheme;
+
+	private readonly FontFolderCatalog _fontCatalog;
+
+	private readonly bool _ownsServices;
 
 	private readonly DispatcherTimer _timer;
 
@@ -53,7 +58,7 @@ public partial class MainWindow : Window
 
 	private readonly NotifyIcon _trayIcon;
 
-	private IReadOnlyList<IScreenTheme> _themes = Array.Empty<IScreenTheme>();
+	private IReadOnlyList<ThemeDefinition> _themeDefinitions = Array.Empty<ThemeDefinition>();
 
 	private AppSettings _settings = new AppSettings();
 
@@ -106,15 +111,97 @@ public partial class MainWindow : Window
 	private bool _themeGalleryPreviewDirty;
 
 	public MainWindow(AppSettings? initialSettings = null)
+		: this(
+			initialSettings,
+			new WindowsSystemSnapshotSource(),
+			new WindowsMusicSnapshotSource(),
+			new LrcLibLyricsSnapshotSource(),
+			new OpenMeteoWeatherSnapshotSource(),
+			new WindowsWeatherLocationProvider(),
+			new YahooStockSnapshotSource(),
+			null,
+			new HttpImageDeviceTransport(),
+			new JsonSettingsStore(),
+			new ImageTheme(),
+			new FontFolderCatalog(System.IO.Path.Combine(AppContext.BaseDirectory, "Fonts")),
+			new ShellViewModel(),
+			ownsServices: true)
+	{
+	}
+
+	public MainWindow(
+		AppSettings initialSettings,
+		ISystemSnapshotSource systemSource,
+		IMusicSnapshotSource musicSource,
+		ILyricsSnapshotSource lyricsSource,
+		IWeatherSnapshotSource weatherSource,
+		WindowsWeatherLocationProvider weatherLocationProvider,
+		IStockSnapshotSource stockSource,
+		IDashboardSnapshotBuilder snapshotBuilder,
+		IDeviceTransport transport,
+		ISettingsStore settingsStore,
+		ImageTheme imageTheme,
+		FontFolderCatalog fontCatalog,
+		ShellViewModel shellViewModel)
+		: this(
+			initialSettings,
+			systemSource,
+			musicSource,
+			lyricsSource,
+			weatherSource,
+			weatherLocationProvider,
+			stockSource,
+			snapshotBuilder,
+			transport,
+			settingsStore,
+			imageTheme,
+			fontCatalog,
+			shellViewModel,
+			ownsServices: false)
+	{
+	}
+
+	private MainWindow(
+		AppSettings? initialSettings,
+		ISystemSnapshotSource systemSource,
+		IMusicSnapshotSource musicSource,
+		ILyricsSnapshotSource lyricsSource,
+		IWeatherSnapshotSource weatherSource,
+		WindowsWeatherLocationProvider weatherLocationProvider,
+		IStockSnapshotSource stockSource,
+		IDashboardSnapshotBuilder? snapshotBuilder,
+		IDeviceTransport transport,
+		ISettingsStore settingsStore,
+		ImageTheme imageTheme,
+		FontFolderCatalog fontCatalog,
+		ShellViewModel shellViewModel,
+		bool ownsServices)
 	{
 		_initialSettings = initialSettings;
+		_systemSource = systemSource;
+		_musicSource = musicSource;
+		_lyricsSource = lyricsSource;
+		_weatherSource = weatherSource;
+		_weatherLocationProvider = weatherLocationProvider;
+		_stockSource = stockSource;
+		_snapshotBuilder = snapshotBuilder ?? new DashboardSnapshotBuilder(
+			systemSource,
+			lyricsSource,
+			weatherSource,
+			stockSource);
+		_transport = transport;
+		_settingsStore = settingsStore;
+		_imageTheme = imageTheme;
+		_fontCatalog = fontCatalog;
+		_ownsServices = ownsServices;
 		if (initialSettings is not null)
 		{
 			_settings = initialSettings;
 		}
 		InitializeComponent();
+		DataContext = shellViewModel;
 		_endpointParts = [EndpointIpPart1, EndpointIpPart2, EndpointIpPart3, EndpointIpPart4];
-		_themes = BuiltInThemes.Create(_imageTheme, () => _settings.Music?.LyricOffsetSeconds ?? 0);
+		_themeDefinitions = BuiltInThemes.CreateDefinitions(_imageTheme, () => _settings.Music?.LyricOffsetSeconds ?? 0);
 		BuildThemeList();
 		PopulateMediaAutomationThemeSelectors();
 		_trayIcon = CreateTrayIcon();
@@ -142,13 +229,18 @@ public partial class MainWindow : Window
 		{
 			_timer.Stop();
 			_autoCommitTimer.Stop();
-			_transport.Dispose();
-			_weatherSource.Dispose();
-			_weatherLocationProvider.Dispose();
-			_stockSource.Dispose();
-			_lyricsSource.Dispose();
+			if (_ownsServices)
+			{
+				(_transport as IDisposable)?.Dispose();
+				(_weatherSource as IDisposable)?.Dispose();
+				_weatherLocationProvider.Dispose();
+				(_stockSource as IDisposable)?.Dispose();
+				(_lyricsSource as IDisposable)?.Dispose();
+				(_musicSource as IDisposable)?.Dispose();
+				(_systemSource as IDisposable)?.Dispose();
+				_fontCatalog.Dispose();
+			}
 			_miMoWindow?.Dispose();
-			_fontCatalog.Dispose();
 			SystemEvents.UserPreferenceChanged -= SystemEvents_OnUserPreferenceChanged;
 			_trayIcon.Visible = false;
 			_trayIcon.ContextMenuStrip?.Dispose();
@@ -167,9 +259,10 @@ public partial class MainWindow : Window
 		_suppressThemeRefresh = true;
 		try
 		{
-			foreach (IScreenTheme theme in _themes.Where(theme =>
-				_themeCategory == "all" || GetThemeCategory(theme.Id).Id == _themeCategory))
+			foreach (ThemeDefinition definition in _themeDefinitions.Where(definition =>
+				_themeCategory == "all" || definition.CategoryId == _themeCategory))
 			{
+				IScreenTheme theme = definition.Theme;
 				System.Windows.Controls.Image preview = new System.Windows.Controls.Image
 				{
 					Stretch = Stretch.UniformToFill,
@@ -185,7 +278,6 @@ public partial class MainWindow : Window
 					preview.Source = null;
 				}
 
-				(string categoryId, string categoryName) = GetThemeCategory(theme.Id);
 				StackPanel content = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
 				content.Children.Add(new TextBlock
 				{
@@ -206,7 +298,7 @@ public partial class MainWindow : Window
 				content.Children.Add(descriptionText);
 				TextBlock metadataText = new TextBlock
 				{
-					Text = $"{categoryName}  ·  {(theme.Id == "image" ? "静态" : "动态")}",
+					Text = $"{definition.CategoryDisplayName}  ·  {(definition.IsStatic ? "静态" : "动态")}",
 					FontSize = 10,
 					Margin = new Thickness(0, 12, 0, 0)
 				};
@@ -233,16 +325,6 @@ public partial class MainWindow : Window
 		ResizeThemeCards(ThemeListPanel.ActualWidth);
 	}
 
-	private static (string Id, string Name) GetThemeCategory(string themeId) => themeId switch
-	{
-		"system" or "dashboard" or "performance" or "network" or "system-minimal" => ("monitor", "监控"),
-		"clock" or "clock-neon" or "clock-flip" or "image" => ("time", "时间"),
-		"weather-five-day" or "stocks" or "ai-quota" => ("info", "资讯"),
-		"music" or "music-vinyl" or "music-cassette" or "music-minimal" or "music-poster" => ("music", "音乐"),
-		"clock-dot-matrix" or "clock-weather-dot" => ("matrix", "点阵"),
-		_ => ("all", "其他")
-	};
-
 	private void ResizeThemeCards(double availableWidth)
 	{
 		if (availableWidth <= 0)
@@ -260,14 +342,15 @@ public partial class MainWindow : Window
 	{
 		MediaIdleThemeComboBox.Items.Clear();
 		MediaPlayingThemeComboBox.Items.Clear();
-		foreach (IScreenTheme theme in _themes)
+		foreach (ThemeDefinition definition in _themeDefinitions)
 		{
+			IScreenTheme theme = definition.Theme;
 			ComboBoxItem item = new ComboBoxItem
 			{
 				Content = theme.DisplayName,
 				Tag = theme.Id
 			};
-			if (MediaThemeAutomation.IsMusicThemeId(theme.Id))
+			if (definition.Category == ThemeCategory.Music)
 			{
 				MediaPlayingThemeComboBox.Items.Add(item);
 			}
@@ -372,7 +455,7 @@ public partial class MainWindow : Window
 		AppearanceManager.Apply(_settings.AppearanceMode);
 		ApplyWindowBackdrop();
 		DevicePreview?.InvalidateVisual();
-		if (_themes.Count > 0 && ThemeListPanel is not null)
+		if (_themeDefinitions.Count > 0 && ThemeListPanel is not null)
 		{
 			BuildThemeList();
 		}
@@ -551,8 +634,8 @@ public partial class MainWindow : Window
 
 	private async void Timer_OnTick(object? sender, EventArgs e)
 	{
-		bool imageIsStatic = string.Equals(GetSelectedTheme()?.Id, "image", StringComparison.OrdinalIgnoreCase);
-		if (!_busy && (!imageIsStatic || _settings.AutoMediaThemeSwitch))
+		bool selectedThemeIsStatic = GetSelectedThemeDefinition()?.IsStatic == true;
+		if (!_busy && (!selectedThemeIsStatic || _settings.AutoMediaThemeSwitch))
 		{
 			await RefreshPreviewAsync();
 			bool shouldPush = _settings.AutoPush || _mediaAutomationThemeChanged;
@@ -634,41 +717,42 @@ public partial class MainWindow : Window
 		_busy = true;
 		try
 		{
-			SystemSnapshot system = await _systemSource.ReadAsync();
-			MusicSnapshot musicSnapshot = await _musicSource.ReadAsync();
-			IScreenTheme screenTheme = GetSelectedTheme() ?? _themes[0];
-			bool mediaIsPlaying = musicSnapshot.Available && musicSnapshot.IsPlaying;
-			string effectiveThemeId = MediaThemeAutomation.ResolveThemeId(_settings, mediaIsPlaying, screenTheme.Id);
-			IScreenTheme theme2 = _themes.FirstOrDefault(theme => string.Equals(theme.Id, effectiveThemeId, StringComparison.OrdinalIgnoreCase))
-				?? _themes.First(theme => theme.Id == (mediaIsPlaying ? "music" : "system"));
+			MusicSnapshot currentMusic = await _musicSource.ReadAsync();
+			ThemeDefinition selectedDefinition = GetSelectedThemeDefinition() ?? _themeDefinitions[0];
+			IScreenTheme screenTheme = selectedDefinition.Theme;
+			bool mediaIsPlaying = currentMusic.Available && currentMusic.IsPlaying;
+			string effectiveThemeId = MediaThemeAutomation.ResolveThemeId(
+				_settings,
+				mediaIsPlaying,
+				screenTheme.Id,
+				id => GetThemeDefinition(id)?.Category == ThemeCategory.Music);
+			ThemeDefinition effectiveDefinition = GetThemeDefinition(effectiveThemeId)
+				?? GetThemeDefinition(mediaIsPlaying ? "music" : "system")
+				?? _themeDefinitions[0];
+			IScreenTheme theme2 = effectiveDefinition.Theme;
 			_mediaAutomationThemeChanged = _settings.AutoMediaThemeSwitch &&
 				_lastEffectiveThemeId != null &&
 				!string.Equals(_lastEffectiveThemeId, theme2.Id, StringComparison.OrdinalIgnoreCase);
 			_lastEffectiveThemeId = theme2.Id;
-			if (_settings.Music?.EnableOnlineLyrics == true
-				&& theme2.Id is "music-vinyl" or "music-cassette"
-				&& musicSnapshot.Available)
-			{
-				musicSnapshot = musicSnapshot with { Lyrics = await _lyricsSource.ReadAsync(musicSnapshot) };
-			}
-			AiQuotaSnapshot? aiQuota = theme2.Id == "ai-quota" ? await ReadAiQuotaAsync() : null;
-			bool needsWeather = theme2.Id is "clock-weather-dot" or "weather-five-day";
+			bool needsLyrics = effectiveDefinition.Requires(ThemeDataRequirements.Lyrics);
+			AiQuotaSnapshot? aiQuota = effectiveDefinition.Requires(ThemeDataRequirements.AiQuota)
+				? await ReadAiQuotaAsync()
+				: null;
+			bool needsWeather = effectiveDefinition.Requires(ThemeDataRequirements.Weather);
 			WeatherSettings? effectiveWeatherSettings = needsWeather
 				? await ResolveEffectiveWeatherSettingsAsync()
 				: null;
-			WeatherSnapshot? weather = effectiveWeatherSettings is not null
-				? await _weatherSource.ReadAsync(effectiveWeatherSettings)
-				: null;
-			StockSnapshot? stocks = theme2.Id == "stocks"
-				? await _stockSource.ReadAsync(_settings.Stocks ?? new StockSettings())
-				: null;
-			_latestSnapshot = system with
-			{
-				Music = musicSnapshot,
-				AiQuota = aiQuota,
-				Weather = weather,
-				Stocks = stocks
-			};
+			bool needsStocks = effectiveDefinition.Requires(ThemeDataRequirements.Stocks);
+			_latestSnapshot = await _snapshotBuilder.BuildAsync(
+				effectiveDefinition,
+				_settings,
+				currentMusic,
+				effectiveWeatherSettings,
+				aiQuota);
+			SystemSnapshot system = _latestSnapshot;
+			MusicSnapshot musicSnapshot = system.Music ?? currentMusic;
+			WeatherSnapshot? weather = system.Weather;
+			StockSnapshot? stocks = system.Stocks;
 			_latestFrame = _renderer.Render(theme2, _latestSnapshot, 100, GetAccentColor(), GetSelectedFontFamily(), GetScreenDisplayOptions());
 			BitmapImage frameSource = LoadBitmap(_latestFrame.JpegBytes);
 			DevicePreview.FrameSource = frameSource;
@@ -676,7 +760,7 @@ public partial class MainWindow : Window
 			MemoryValueText.Text = $"内存  {system.MemoryPercent:0}%";
 			DownloadValueText.Text = $"下载  {system.DownloadMbps:0.0}M";
 			UploadValueText.Text = $"上传  {system.UploadMbps:0.0}M";
-			string lyricStatus = _settings.Music?.EnableOnlineLyrics == true && theme2.Id is "music-vinyl" or "music-cassette"
+			string lyricStatus = _settings.Music?.EnableOnlineLyrics == true && needsLyrics
 				? (musicSnapshot.Lyrics.Available ? " · 歌词已匹配" : " · 暂无同步歌词")
 				: string.Empty;
 			string musicSource = ResolveMusicSourceName(musicSnapshot.SourceAppId);
@@ -693,7 +777,7 @@ public partial class MainWindow : Window
 			{
 				StockSourceStatusText.Text = $"{stocks.Quotes.Count} 项 · {(stocks.IsStale ? "上次数据" : $"更新 {stocks.UpdatedAt:HH:mm}")}";
 			}
-			else if (theme2.Id == "stocks")
+			else if (needsStocks)
 			{
 				StockSourceStatusText.Text = stocks?.ErrorMessage ?? "请添加至少一个行情代码";
 			}
@@ -925,12 +1009,23 @@ public partial class MainWindow : Window
 
 	private IScreenTheme? GetSelectedTheme()
 	{
-		return _themes.FirstOrDefault(theme => string.Equals(theme.Id, _settings.SelectedThemeId, StringComparison.OrdinalIgnoreCase));
+		return GetSelectedThemeDefinition()?.Theme;
+	}
+
+	private ThemeDefinition? GetSelectedThemeDefinition()
+	{
+		return GetThemeDefinition(_settings.SelectedThemeId);
+	}
+
+	private ThemeDefinition? GetThemeDefinition(string? id)
+	{
+		return _themeDefinitions.FirstOrDefault(definition =>
+			string.Equals(definition.Id, id, StringComparison.OrdinalIgnoreCase));
 	}
 
 	private void SelectTheme(string id)
 	{
-		_settings.SelectedThemeId = _themes.Any(theme => string.Equals(theme.Id, id, StringComparison.OrdinalIgnoreCase)) ? id : _themes[0].Id;
+		_settings.SelectedThemeId = GetThemeDefinition(id)?.Id ?? _themeDefinitions[0].Id;
 		System.Windows.Controls.RadioButton? card = ThemeListPanel.Children.OfType<System.Windows.Controls.RadioButton>()
 			.FirstOrDefault(candidate => string.Equals(candidate.Tag?.ToString(), _settings.SelectedThemeId, StringComparison.OrdinalIgnoreCase));
 		if (card is not null)
@@ -1012,13 +1107,14 @@ public partial class MainWindow : Window
 		if (sender is System.Windows.Controls.RadioButton radioButton)
 		{
 			string id = radioButton.Tag?.ToString() ?? "system";
-			IScreenTheme screenTheme = _themes.FirstOrDefault((IScreenTheme candidate) => candidate.Id == id) ?? _themes[0];
+			ThemeDefinition definition = GetThemeDefinition(id) ?? _themeDefinitions[0];
+			IScreenTheme screenTheme = definition.Theme;
 			CurrentThemeNameText.Text = screenTheme.DisplayName;
 			CurrentThemeDescription.Text = ((id == "image" && !string.IsNullOrWhiteSpace(_imageTheme.ImagePath)) ? _imageTheme.ImagePath : screenTheme.Description);
 			CurrentThemeDetailsText.Text = screenTheme.Details;
-			SelectImageButton.Visibility = ((!(id == "image")) ? Visibility.Collapsed : Visibility.Visible);
-			UpdateContextualDataCards(id);
-			UpdateAutomationVisibility(id);
+			SelectImageButton.Visibility = definition.Shows(ThemeSettingsSections.Image) ? Visibility.Visible : Visibility.Collapsed;
+			UpdateContextualDataCards(definition);
+			UpdateAutomationVisibility(definition);
 			if (_loaded)
 			{
 				InteractionMotion.Reveal(CurrentThemeNameText, 4.0, 0.996);
@@ -1064,50 +1160,18 @@ public partial class MainWindow : Window
 		await _settingsStore.SaveAsync(_settings);
 	}
 
-	private void UpdateContextualDataCards(string themeId)
+	private void UpdateContextualDataCards(ThemeDefinition definition)
 	{
-		bool flag;
-		switch (themeId)
-		{
-		case "system":
-		case "dashboard":
-		case "performance":
-		case "network":
-		case "system-minimal":
-			flag = true;
-			break;
-		default:
-			flag = false;
-			break;
-		}
-		bool visible = flag;
-		switch (themeId)
-		{
-		case "music":
-		case "music-vinyl":
-		case "music-cassette":
-		case "music-minimal":
-		case "music-poster":
-			flag = true;
-			break;
-		default:
-			flag = false;
-			break;
-		}
-		bool visible2 = flag;
-		bool visible3 = themeId == "ai-quota";
-		bool visible4 = themeId is "clock-weather-dot" or "weather-five-day";
-		bool visible5 = themeId == "stocks";
-		SetContextCardVisibility(SystemDataCard, visible);
-		SetContextCardVisibility(MusicDataCard, visible2);
-		SetContextCardVisibility(AiQuotaDataCard, visible3);
-		SetContextCardVisibility(WeatherDataCard, visible4);
-		SetContextCardVisibility(StockDataCard, visible5);
+		SetContextCardVisibility(SystemDataCard, definition.Shows(ThemeSettingsSections.System));
+		SetContextCardVisibility(MusicDataCard, definition.Shows(ThemeSettingsSections.Music));
+		SetContextCardVisibility(AiQuotaDataCard, definition.Shows(ThemeSettingsSections.AiQuota));
+		SetContextCardVisibility(WeatherDataCard, definition.Shows(ThemeSettingsSections.Weather));
+		SetContextCardVisibility(StockDataCard, definition.Shows(ThemeSettingsSections.Stocks));
 	}
 
-	private void UpdateAutomationVisibility(string themeId)
+	private void UpdateAutomationVisibility(ThemeDefinition definition)
 	{
-		SetContextCardVisibility(AutoMusicCard, MediaThemeAutomation.IsMusicThemeId(themeId));
+		SetContextCardVisibility(AutoMusicCard, definition.Category == ThemeCategory.Music);
 	}
 	private static void SetContextCardVisibility(FrameworkElement card, bool visible)
 	{
@@ -1126,41 +1190,26 @@ public partial class MainWindow : Window
 
 	private void Navigation_OnChecked(object sender, RoutedEventArgs e)
 	{
-		if (!(sender is System.Windows.Controls.RadioButton radioButton) || ScreenPanel == null || ThemePanel == null || AutomationPanel == null || SettingsPanel == null || AboutPanel == null)
+		if (sender is not System.Windows.Controls.RadioButton radioButton
+			|| radioButton.Tag is not string page
+			|| DataContext is not ShellViewModel viewModel)
 		{
 			return;
 		}
-		string? text = radioButton.Tag?.ToString();
-		ScreenPanel.Visibility = ((!(text == "screen")) ? Visibility.Collapsed : Visibility.Visible);
-		ThemePanel.Visibility = ((!(text == "theme")) ? Visibility.Collapsed : Visibility.Visible);
-		AutomationPanel.Visibility = ((!(text == "automation")) ? Visibility.Collapsed : Visibility.Visible);
-		SettingsPanel.Visibility = ((!(text == "settings")) ? Visibility.Collapsed : Visibility.Visible);
-		AboutPanel.Visibility = ((!(text == "about")) ? Visibility.Collapsed : Visibility.Visible);
-		LocateCurrentButton.Visibility = text == "screen" ? Visibility.Visible : Visibility.Collapsed;
-		(PageTitleText.Text, PageSubtitleText.Text) = text switch
-		{
-			"screen" => ("显示方案", "选择要推送到 Linx68 屏幕的画面"),
-			"theme" => ("外观", "调整应用外观与键盘屏幕的字体和强调色"),
-			"automation" => ("自动化", "设置推送频率和媒体主题切换"),
-			"settings" => ("其他设置", "设备地址、安全区和启动行为"),
-			"about" => ("关于", "版本、许可与数据来源"),
-			_ => ("灵犀68屏幕驱动", string.Empty)
-		};
+
+		viewModel.NavigateCommand.Execute(page);
 		if (_loaded)
 		{
-			FrameworkElement? frameworkElement = text switch
+			FrameworkElement frameworkElement = viewModel.CurrentPage switch
 			{
-				"screen" => ScreenPanel, 
-				"theme" => ThemePanel, 
-				"automation" => AutomationPanel, 
-				"settings" => SettingsPanel, 
-				"about" => AboutPanel, 
-				_ => null, 
+				ShellPage.Screen => ScreenPanel,
+				ShellPage.Appearance => ThemePanel,
+				ShellPage.Automation => AutomationPanel,
+				ShellPage.Settings => SettingsPanel,
+				ShellPage.About => AboutPanel,
+				_ => ScreenPanel
 			};
-			if (frameworkElement != null)
-			{
-				InteractionMotion.Reveal(frameworkElement, 8.0, 0.994);
-			}
+			InteractionMotion.Reveal(frameworkElement, 8.0, 0.994);
 		}
 	}
 

@@ -14,21 +14,26 @@ public static class MediaThemeAutomation
     public static bool IsMusicThemeId(string? themeId) =>
         !string.IsNullOrWhiteSpace(themeId) && MusicThemeIds.Contains(themeId);
 
-    public static string ResolveThemeId(AppSettings settings, bool isPlaying, string? selectedThemeId)
+    public static string ResolveThemeId(
+        AppSettings settings,
+        bool isPlaying,
+        string? selectedThemeId,
+        Func<string?, bool>? isMusicTheme = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        isMusicTheme ??= IsMusicThemeId;
 
         if (settings.AutoMediaThemeSwitch)
         {
             if (isPlaying)
             {
-                return IsMusicThemeId(settings.MediaPlayingThemeId)
+                return isMusicTheme(settings.MediaPlayingThemeId)
                     ? settings.MediaPlayingThemeId
                     : "music";
             }
 
             return !string.IsNullOrWhiteSpace(settings.MediaIdleThemeId) &&
-                   !IsMusicThemeId(settings.MediaIdleThemeId)
+                   !isMusicTheme(settings.MediaIdleThemeId)
                 ? settings.MediaIdleThemeId
                 : "system";
         }

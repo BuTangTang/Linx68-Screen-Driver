@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 
@@ -27,29 +28,46 @@ public static class BuiltInThemes
 
 	public static IReadOnlyList<IScreenTheme> Create(ImageTheme imageTheme, Func<double>? lyricOffsetSeconds = null)
 	{
+		return CreateDefinitions(imageTheme, lyricOffsetSeconds)
+			.Select(definition => definition.Theme)
+			.ToArray();
+	}
+
+	public static IReadOnlyList<ThemeDefinition> CreateDefinitions(ImageTheme imageTheme, Func<double>? lyricOffsetSeconds = null)
+	{
 		lyricOffsetSeconds ??= static () => 0;
-		return new IScreenTheme[]
+		return new ThemeDefinition[]
 		{
-			new SystemStatusTheme(),
-			Make("dashboard", "状态概览", "四项系统指标集中展示", "紧凑展示 CPU、内存、下载和上传速度。", Dashboard),
-			Make("performance", "性能条带", "纵向性能条与实时负载", "使用高对比度纵向进度条快速查看 CPU 与内存压力。", Performance),
-			Make("network", "网络监控", "突出显示实时上下行速度", "以大号数字展示下载和上传速度，并保留 CPU 与内存摘要。", Network),
-			Make("system-minimal", "状态极简", "仅保留关键系统信息", "无卡片极简排版，适合低干扰桌面。", MinimalSystem),
-			new ClockTheme(),
-			Make("clock-neon", "霓虹时钟", "强调色大号数字时钟", "高对比度霓虹风格时间、秒钟和日期。", NeonClock),
-			Make("clock-flip", "翻页时钟", "小时与分钟分栏显示", "模拟翻页钟的双卡片布局，并显示秒钟与星期。", FlipClock),
-			new FiveDayWeatherTheme(),
-			new DotMatrixClockTheme(),
-			new DotMatrixWeatherClockTheme(),
-			new MusicTheme(),
-			new MusicDashboardTheme(MusicDashboardStyle.Vinyl, lyricOffsetSeconds),
-			new MusicDashboardTheme(MusicDashboardStyle.Cassette, lyricOffsetSeconds),
-			Make("music-minimal", "音乐极简", "无封面的纯文字音乐页", "使用大号曲名、歌手和播放进度，适合封面质量不稳定时。", MusicMinimal),
-			Make("music-poster", "音乐海报", "全屏封面音乐页", "全屏封面、曲名、歌手、进度与两端时间。", MusicPoster),
-			new AiQuotaTheme(),
-			new StockTheme(),
-			imageTheme
+			Define(new SystemStatusTheme(), ThemeCategory.Monitor, ThemeDataRequirements.System, ThemeSettingsSections.System),
+			Define(Make("dashboard", "状态概览", "四项系统指标集中展示", "紧凑展示 CPU、内存、下载和上传速度。", Dashboard), ThemeCategory.Monitor, ThemeDataRequirements.System, ThemeSettingsSections.System),
+			Define(Make("performance", "性能条带", "纵向性能条与实时负载", "使用高对比度纵向进度条快速查看 CPU 与内存压力。", Performance), ThemeCategory.Monitor, ThemeDataRequirements.System, ThemeSettingsSections.System),
+			Define(Make("network", "网络监控", "突出显示实时上下行速度", "以大号数字展示下载和上传速度，并保留 CPU 与内存摘要。", Network), ThemeCategory.Monitor, ThemeDataRequirements.System, ThemeSettingsSections.System),
+			Define(Make("system-minimal", "状态极简", "仅保留关键系统信息", "无卡片极简排版，适合低干扰桌面。", MinimalSystem), ThemeCategory.Monitor, ThemeDataRequirements.System, ThemeSettingsSections.System),
+			Define(new ClockTheme(), ThemeCategory.Time),
+			Define(Make("clock-neon", "霓虹时钟", "强调色大号数字时钟", "高对比度霓虹风格时间、秒钟和日期。", NeonClock), ThemeCategory.Time),
+			Define(Make("clock-flip", "翻页时钟", "小时与分钟分栏显示", "模拟翻页钟的双卡片布局，并显示秒钟与星期。", FlipClock), ThemeCategory.Time),
+			Define(new FiveDayWeatherTheme(), ThemeCategory.Information, ThemeDataRequirements.Weather, ThemeSettingsSections.Weather),
+			Define(new DotMatrixClockTheme(), ThemeCategory.Matrix),
+			Define(new DotMatrixWeatherClockTheme(), ThemeCategory.Matrix, ThemeDataRequirements.Weather, ThemeSettingsSections.Weather),
+			Define(new MusicTheme(), ThemeCategory.Music, ThemeDataRequirements.Music, ThemeSettingsSections.Music),
+			Define(new MusicDashboardTheme(MusicDashboardStyle.Vinyl, lyricOffsetSeconds), ThemeCategory.Music, ThemeDataRequirements.Music | ThemeDataRequirements.Lyrics, ThemeSettingsSections.Music),
+			Define(new MusicDashboardTheme(MusicDashboardStyle.Cassette, lyricOffsetSeconds), ThemeCategory.Music, ThemeDataRequirements.Music | ThemeDataRequirements.Lyrics, ThemeSettingsSections.Music),
+			Define(Make("music-minimal", "音乐极简", "无封面的纯文字音乐页", "使用大号曲名、歌手和播放进度，适合封面质量不稳定时。", MusicMinimal), ThemeCategory.Music, ThemeDataRequirements.Music, ThemeSettingsSections.Music),
+			Define(Make("music-poster", "音乐海报", "全屏封面音乐页", "全屏封面、曲名、歌手、进度与两端时间。", MusicPoster), ThemeCategory.Music, ThemeDataRequirements.Music, ThemeSettingsSections.Music),
+			Define(new AiQuotaTheme(), ThemeCategory.Information, ThemeDataRequirements.AiQuota, ThemeSettingsSections.AiQuota),
+			Define(new StockTheme(), ThemeCategory.Information, ThemeDataRequirements.Stocks, ThemeSettingsSections.Stocks),
+			Define(imageTheme, ThemeCategory.Time, settingsSections: ThemeSettingsSections.Image, isStatic: true)
 		};
+	}
+
+	private static ThemeDefinition Define(
+		IScreenTheme theme,
+		ThemeCategory category,
+		ThemeDataRequirements requirements = ThemeDataRequirements.None,
+		ThemeSettingsSections settingsSections = ThemeSettingsSections.None,
+		bool isStatic = false)
+	{
+		return new ThemeDefinition(theme, category, requirements, settingsSections, isStatic);
 	}
 
 	private static IScreenTheme Make(string id, string name, string description, string details, Action<ScreenCanvas, SystemSnapshot> draw)

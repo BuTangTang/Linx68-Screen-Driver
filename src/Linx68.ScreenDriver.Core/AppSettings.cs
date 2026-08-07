@@ -9,6 +9,10 @@ public enum AppearanceMode
 
 public sealed class AppSettings
 {
+	public const int CurrentSettingsVersion = 2;
+
+	public int SettingsVersion { get; set; } = CurrentSettingsVersion;
+
 	public AppearanceMode AppearanceMode { get; set; } = AppearanceMode.System;
 
 	public string DeviceEndpoint { get; set; } = string.Empty;
