@@ -1,0 +1,36 @@
+name: Validate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Build and smoke test
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore Linx68.ScreenDriver.sln
+
+      - name: Build
+        run: dotnet build Linx68.ScreenDriver.sln -c Release --no-restore
+
+      - name: Run core smoke tests
+        run: dotnet run --project tests/Linx68.ScreenDriver.SmokeTests/Linx68.ScreenDriver.SmokeTests.csproj -c Release --no-build
+
+      - name: Run UI smoke tests
+        run: dotnet run --project tests/Linx68.ScreenDriver.UiSmokeTests/Linx68.ScreenDriver.UiSmokeTests.csproj -c Release --no-build

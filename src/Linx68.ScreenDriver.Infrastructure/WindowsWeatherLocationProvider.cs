@@ -1,17 +1,20 @@
 using Linx68.ScreenDriver.Core;
+using Linx68.ScreenDriver.Application;
 using Windows.Devices.Geolocation;
 
 namespace Linx68.ScreenDriver.Infrastructure;
 
-public sealed class WindowsWeatherLocationProvider : IDisposable
+public sealed class WindowsWeatherLocationProvider : IAutomaticWeatherLocationProvider, IDisposable
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(30);
     private readonly BigDataCloudReverseGeocoder _reverseGeocoder = new();
     private AutomaticWeatherLocation? _cached;
     private DateTimeOffset _cachedAt;
 
-    public async Task<AutomaticWeatherLocation?> TryGetAsync()
+    public async Task<AutomaticWeatherLocation?> TryGetAsync(
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (_cached is not null && DateTimeOffset.Now - _cachedAt < CacheDuration)
         {
             return _cached;
@@ -33,6 +36,7 @@ public sealed class WindowsWeatherLocationProvider : IDisposable
             Geoposition position = await locator.GetGeopositionAsync(
                 maximumAge: TimeSpan.FromMinutes(10),
                 timeout: TimeSpan.FromSeconds(8));
+            cancellationToken.ThrowIfCancellationRequested();
             BasicGeoposition coordinate = position.Coordinate.Point.Position;
             string displayName = await ResolveDisplayNameAsync(
                 coordinate.Latitude,
@@ -43,6 +47,10 @@ public sealed class WindowsWeatherLocationProvider : IDisposable
                 displayName);
             _cachedAt = DateTimeOffset.Now;
             return _cached;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception)
         {
@@ -65,8 +73,3 @@ public sealed class WindowsWeatherLocationProvider : IDisposable
 
     public void Dispose() => _reverseGeocoder.Dispose();
 }
-
-public sealed record AutomaticWeatherLocation(
-    double Latitude,
-    double Longitude,
-    string DisplayName);

@@ -488,10 +488,10 @@
     <Style x:Key="SideNavRadio" TargetType="RadioButton">
         <Setter Property="local:InteractionMotion.IsInteractive" Value="True" />
         <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
-        <Setter Property="FontSize" Value="13" />
-        <Setter Property="Foreground" Value="{DynamicResource SecondaryText}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryText}" />
         <Setter Property="Margin" Value="0,0,0,4" />
-        <Setter Property="Height" Value="42" />
+        <Setter Property="Height" Value="44" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Template">
@@ -499,20 +499,48 @@
                 <ControlTemplate TargetType="RadioButton">
                     <Border x:Name="Chrome" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="{StaticResource Radius.Control}" Padding="12,0">
                         <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="3" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                            <Border x:Name="Marker" Width="3" Height="18" CornerRadius="2" Background="Transparent" VerticalAlignment="Center" />
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="4" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Border x:Name="Marker" Width="4" Height="22" CornerRadius="2" Background="Transparent" VerticalAlignment="Center" />
                             <TextBlock x:Name="Label" Grid.Column="2" Text="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" FontFamily="{TemplateBinding FontFamily}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" VerticalAlignment="Center" />
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Surface.Hover}" /></Trigger>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Surface.Control}" /></Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Surface.Hover}" />
+                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                             <Setter TargetName="Marker" Property="Background" Value="{DynamicResource AccentBrush}" />
-                            <Setter TargetName="Label" Property="Foreground" Value="{DynamicResource PrimaryText}" />
-                            <Setter Property="FontWeight" Value="SemiBold" />
+                            <Setter TargetName="Label" Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                            <Setter Property="FontWeight" Value="Bold" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Stroke.Strong}" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SidebarEndpointButton" TargetType="Button">
+        <Setter Property="local:InteractionMotion.IsInteractive" Value="True" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryText}" />
+        <Setter Property="Background" Value="{DynamicResource Surface.Control}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="Margin" Value="8,16,8,8" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource Radius.Card}" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource AccentSoftBrush}" /><Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}" /></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource AccentPressedBrush}" /></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}" /><Setter TargetName="Chrome" Property="BorderThickness" Value="2" /></Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
@@ -561,7 +589,13 @@
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="44" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                             <Border Background="{DynamicResource Surface.Screen}" CornerRadius="7" ClipToBounds="True" BorderBrush="{DynamicResource Stroke.Strong}" BorderThickness="1">
-                                <ContentPresenter Content="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=DataContext}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                                <ContentPresenter Content="{Binding Preview}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                                    <ContentPresenter.ContentTemplate>
+                                        <DataTemplate>
+                                            <Image Source="{Binding}" Stretch="UniformToFill" SnapsToDevicePixels="False" />
+                                        </DataTemplate>
+                                    </ContentPresenter.ContentTemplate>
+                                </ContentPresenter>
                             </Border>
                             <ContentPresenter Grid.Column="2" Content="{TemplateBinding Content}" VerticalAlignment="Center" />
                         </Grid>

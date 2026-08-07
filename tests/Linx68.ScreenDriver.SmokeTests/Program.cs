@@ -105,6 +105,102 @@ Assert(pipelineWeather.ReadCount == 1 && pipelineStocks.ReadCount == 0,
     "weather theme must invoke only the weather source");
 Console.WriteLine("PASS metadata-driven dashboard snapshot pipeline");
 
+var refreshMusic = new StubMusicSnapshotSource(SystemSnapshot.DesignSample.Music! with
+{
+    IsPlaying = true
+});
+var refreshLyrics = new StubLyricsSnapshotSource();
+var refreshWeather = new StubWeatherSnapshotSource();
+var refreshStocks = new StubStockSnapshotSource();
+var refreshSnapshotBuilder = new DashboardSnapshotBuilder(
+    new StubSystemSnapshotSource(),
+    refreshLyrics,
+    refreshWeather,
+    refreshStocks);
+var refreshWeatherResolver = new StubWeatherSettingsResolver(
+    new WeatherSettingsResolution(new WeatherSettings { LocationQuery = "北京" }, true));
+var refreshService = new DashboardRefreshService(
+    refreshMusic,
+    refreshSnapshotBuilder,
+    refreshWeatherResolver);
+var refreshSettings = new AppSettings
+{
+    AutoMediaThemeSwitch = true,
+    MediaPlayingThemeId = "music-vinyl",
+    MediaIdleThemeId = "system"
+};
+refreshSettings.Music.EnableOnlineLyrics = true;
+var refreshResult = await refreshService.RefreshAsync(new DashboardRefreshRequest(
+    themeDefinitions,
+    refreshSettings,
+    "clock",
+    "clock",
+    _ => throw new InvalidOperationException("AI source must not be read for a music theme.")));
+Assert(refreshResult.EffectiveTheme.Id == "music-vinyl" && refreshResult.EffectiveThemeChanged,
+    "refresh service must resolve the configured playing-media theme");
+Assert(refreshLyrics.ReadCount == 1 && refreshWeatherResolver.ReadCount == 0,
+    "refresh service must request only the metadata-required sources");
+
+refreshSettings.AutoMediaThemeSwitch = false;
+int aiReadCount = 0;
+refreshResult = await refreshService.RefreshAsync(new DashboardRefreshRequest(
+    themeDefinitions,
+    refreshSettings,
+    "ai-quota",
+    refreshResult.EffectiveTheme.Id,
+    _ =>
+    {
+        aiReadCount++;
+        return Task.FromResult<AiQuotaSnapshot?>(AiQuotaSnapshot.ForSubscription("Test", 50));
+    }));
+Assert(refreshResult.EffectiveTheme.Id == "ai-quota" && aiReadCount == 1,
+    "refresh service must request AI data only for an AI theme");
+
+refreshResult = await refreshService.RefreshAsync(new DashboardRefreshRequest(
+    themeDefinitions,
+    refreshSettings,
+    "weather-five-day",
+    refreshResult.EffectiveTheme.Id));
+Assert(refreshResult.EffectiveTheme.Id == "weather-five-day"
+       && refreshWeatherResolver.ReadCount == 1
+       && refreshResult.UsedAutomaticWeatherLocationFallback,
+    "refresh service must surface automatic weather-location fallback state");
+Console.WriteLine("PASS application refresh service resolves theme and requests data on demand");
+
+var unavailableLocationProvider = new StubAutomaticWeatherLocationProvider(null);
+var weatherSettingsResolver = new WeatherSettingsResolver(unavailableLocationProvider);
+var weatherResolution = await weatherSettingsResolver.ResolveAsync(new WeatherSettings
+{
+    LocationQuery = "上海",
+    UseAutomaticLocation = true
+});
+Assert(weatherResolution.UsedAutomaticLocationFallback
+       && weatherResolution.Settings.LocationQuery == "上海"
+       && !weatherResolution.Settings.UseAutomaticLocation,
+    "weather resolver must fall back to the saved city when automatic location is unavailable");
+var availableLocationProvider = new StubAutomaticWeatherLocationProvider(
+    new AutomaticWeatherLocation(31.2304, 121.4737, "当前位置"));
+weatherSettingsResolver = new WeatherSettingsResolver(availableLocationProvider);
+weatherResolution = await weatherSettingsResolver.ResolveAsync(new WeatherSettings());
+Assert(!weatherResolution.UsedAutomaticLocationFallback
+       && weatherResolution.Settings.Latitude == 31.2304
+       && weatherResolution.Settings.AutomaticLocationName == "当前位置",
+    "weather resolver must retain automatic coordinates and display name");
+Console.WriteLine("PASS weather settings resolver handles automatic-location fallback");
+
+var recordingTransport = new StubDeviceTransport();
+var displayPushService = new DisplayPushService(recordingTransport);
+RenderedFrame pushFrame = renderer.Render(themes[0], SystemSnapshot.DesignSample);
+DevicePushResult invalidEndpointResult = await displayPushService.PushAsync("not an IP", pushFrame);
+Assert(!invalidEndpointResult.Success && recordingTransport.PushCount == 0,
+    "invalid display endpoint must not invoke transport");
+DevicePushResult validEndpointResult = await displayPushService.PushAsync("http://192.168.1.8/other", pushFrame);
+Assert(validEndpointResult.Success
+       && recordingTransport.LastEndpoint?.AbsoluteUri == "http://192.168.1.8/image/upload"
+       && recordingTransport.PushCount == 1,
+    "display push service must normalize a valid IPv4 endpoint");
+Console.WriteLine("PASS display push service validates and normalizes endpoints");
+
 var aiQuotaTheme = themes.Single(theme => theme.Id == "ai-quota");
 var subscriptionQuota = AiQuotaSnapshot.ForSubscription(
     "ChatGPT",
@@ -596,5 +692,50 @@ sealed class StubStockSnapshotSource : IStockSnapshotSource
     {
         ReadCount++;
         return Task.FromResult(StockSnapshot.Empty);
+    }
+}
+
+sealed class StubMusicSnapshotSource(MusicSnapshot snapshot) : IMusicSnapshotSource
+{
+    public MusicSnapshot Snapshot { get; set; } = snapshot;
+
+    public ValueTask<MusicSnapshot> ReadAsync(CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Snapshot);
+}
+
+sealed class StubWeatherSettingsResolver(WeatherSettingsResolution resolution) : IWeatherSettingsResolver
+{
+    public int ReadCount { get; private set; }
+
+    public Task<WeatherSettingsResolution> ResolveAsync(
+        WeatherSettings settings,
+        CancellationToken cancellationToken = default)
+    {
+        ReadCount++;
+        return Task.FromResult(resolution);
+    }
+}
+
+sealed class StubAutomaticWeatherLocationProvider(
+    AutomaticWeatherLocation? location) : IAutomaticWeatherLocationProvider
+{
+    public Task<AutomaticWeatherLocation?> TryGetAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(location);
+}
+
+sealed class StubDeviceTransport : IDeviceTransport
+{
+    public int PushCount { get; private set; }
+
+    public Uri? LastEndpoint { get; private set; }
+
+    public Task<DevicePushResult> PushAsync(
+        Uri endpoint,
+        RenderedFrame frame,
+        CancellationToken cancellationToken = default)
+    {
+        PushCount++;
+        LastEndpoint = endpoint;
+        return Task.FromResult(new DevicePushResult(true, 200, "OK", TimeSpan.Zero));
     }
 }

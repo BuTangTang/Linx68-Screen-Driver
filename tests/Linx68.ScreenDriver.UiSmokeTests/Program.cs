@@ -5,6 +5,7 @@ using System.Windows.Media.Imaging;
 using System.IO;
 using Linx68.ScreenDriver.App;
 using Linx68.ScreenDriver.App.ViewModels;
+using Linx68.ScreenDriver.Application;
 using Linx68.ScreenDriver.Core;
 using System.Windows.Threading;
 
@@ -29,6 +30,10 @@ internal static class Program
         Console.WriteLine($"PASS UI font stack {uiFont.Source}");
         VerifyAppearancePalettes();
         VerifyShellNavigationViewModel();
+        VerifyScreenViewModel();
+        VerifyAppearanceViewModel();
+        VerifyAutomationViewModel();
+        VerifySettingsViewModel();
 
         VerifyTextBox(app, 44, new Thickness(14, 0, 14, 0), "\u5317\u4EAC Ag09");
         VerifyTextBox(app, 40, new Thickness(6, 0, 6, 0), "\u5317\u4EAC Ag09");
@@ -42,6 +47,7 @@ internal static class Program
         VerifySettingsIpEditorGeometry();
         VerifyWorkspaceGeometry();
 		VerifyRuntimeAppearanceSwitch(app);
+        VerifySaveFailureIsHandled();
 
         int captureIndex = Array.IndexOf(args, "--capture");
         if (captureIndex >= 0)
@@ -52,7 +58,13 @@ internal static class Program
                 int.Parse(args[captureIndex + 2]),
                 int.Parse(args[captureIndex + 3]),
                 args.Contains("--dark", StringComparer.OrdinalIgnoreCase),
-                args.Contains("--appearance", StringComparer.OrdinalIgnoreCase));
+                args.Contains("--appearance", StringComparer.OrdinalIgnoreCase)
+                    ? "appearance"
+                    : args.Contains("--automation", StringComparer.OrdinalIgnoreCase)
+                        ? "automation"
+                        : args.Contains("--settings", StringComparer.OrdinalIgnoreCase)
+                            ? "settings"
+                        : "screen");
         }
 
         Console.WriteLine("All UI smoke tests passed.");
@@ -71,7 +83,115 @@ internal static class Program
         Console.WriteLine("PASS MVVM shell navigation state and command");
     }
 
-    private static void CaptureMainWindow(string path, int width, int height, bool dark, bool appearance)
+    private static void VerifyScreenViewModel()
+    {
+        var definitions = BuiltInThemes.CreateDefinitions(new ImageTheme());
+        var viewModel = new ScreenViewModel();
+        int selectionCount = 0;
+        viewModel.ThemeSelected += _ => selectionCount++;
+        viewModel.SetThemes(
+            definitions.Select(definition => new ThemeCardViewModel(definition, preview: null)),
+            "clock");
+        viewModel.SelectCategory("music");
+        Assert(viewModel.VisibleThemes.Count == 5,
+            "screen view model must filter the gallery by the selected category");
+        viewModel.SelectTheme("music-vinyl", notify: true);
+        viewModel.UpdateCardWidth(500);
+        Assert(viewModel.SelectedTheme?.Id == "music-vinyl"
+               && selectionCount == 1
+               && viewModel.VisibleThemes.All(theme => theme.CardWidth > 196),
+            "screen view model must synchronize selection, event and responsive card width");
+        Console.WriteLine("PASS MVVM screen gallery state and selection");
+    }
+
+    private static void VerifyAppearanceViewModel()
+    {
+        var settings = new AppSettings
+        {
+            AppearanceMode = AppearanceMode.Light,
+            AccentColor = "#123456",
+            ImageTimePlacement = ImageTimePlacement.Top,
+            SelectedFontId = ScreenFontOption.Default.Id
+        };
+        var viewModel = new AppearanceViewModel();
+        viewModel.Load(settings, [ScreenFontOption.Default]);
+        Assert(viewModel.IsLightAppearance
+               && viewModel.IsAccentColorValid
+               && viewModel.SelectedImageTimePlacement?.Value == ImageTimePlacement.Top,
+            "appearance view model must load the persisted display settings");
+        viewModel.IsDarkAppearance = true;
+        viewModel.AccentColor = "#E4694C";
+        viewModel.SelectedImageTimePlacement = viewModel.ImageTimePlacements.Single(option =>
+            option.Value == ImageTimePlacement.Bottom);
+        viewModel.ApplyTo(settings);
+        Assert(settings.AppearanceMode == AppearanceMode.Dark
+               && settings.AccentColor == "#E4694C"
+               && settings.ImageTimePlacement == ImageTimePlacement.Bottom,
+            "appearance view model must apply edited settings without reading UI controls");
+        Console.WriteLine("PASS MVVM appearance state and settings mapping");
+    }
+
+    private static void VerifyAutomationViewModel()
+    {
+        var definitions = BuiltInThemes.CreateDefinitions(new ImageTheme());
+        var settings = new AppSettings
+        {
+            AutoPush = false,
+            RefreshSeconds = 99,
+            AutoSwitchToMusic = true,
+            AutoMediaThemeSwitch = true,
+            MediaIdleThemeId = "clock-neon",
+            MediaPlayingThemeId = "music-vinyl"
+        };
+        var viewModel = new AutomationViewModel();
+        viewModel.Load(settings, definitions);
+        Assert(!viewModel.AutoPush
+               && viewModel.RefreshSeconds == 30
+               && viewModel.IdleThemes.Any(theme => theme.Id == "clock-neon")
+               && viewModel.SelectedPlayingTheme?.Id == "music-vinyl",
+            "automation view model must load and normalize saved automation settings");
+        viewModel.RefreshSeconds = 0;
+        viewModel.AutoPush = true;
+        viewModel.SelectedIdleTheme = viewModel.IdleThemes.Single(theme => theme.Id == "system");
+        viewModel.ApplyTo(settings);
+        Assert(settings.RefreshSeconds == 1
+               && settings.AutoPush
+               && settings.MediaIdleThemeId == "system",
+            "automation view model must clamp and apply edited automation settings");
+        Console.WriteLine("PASS MVVM automation state and settings mapping");
+    }
+
+    private static void VerifySettingsViewModel()
+    {
+        var settings = new AppSettings
+        {
+            DeviceEndpoint = "http://192.168.1.100/image/upload",
+            SafeArea = new ScreenInsets(8, 48, 8, 10),
+            MinimizeToTray = false,
+            CloseToTray = false,
+            StartMinimized = true,
+            LaunchAtStartup = true
+        };
+        var viewModel = new SettingsViewModel();
+        viewModel.Load(settings);
+        Assert(viewModel.EndpointIp == "192.168.1.100"
+               && viewModel.SafeTop == "48"
+               && !viewModel.MinimizeToTray
+               && viewModel.StartMinimized,
+            "settings view model must load device, safe-area and tray settings");
+        Assert(viewModel.SetEndpoint("10.0.0.12"),
+            "settings view model must accept a valid IPv4 address");
+        viewModel.SafeLeft = "70";
+        viewModel.SafeRight = "70";
+        viewModel.ApplyTo(settings);
+        Assert(settings.DeviceEndpoint == "http://10.0.0.12/image/upload"
+               && settings.SafeArea == new ScreenInsets(60, 48, 60, 10)
+               && settings.LaunchAtStartup,
+            "settings view model must normalize endpoint and clamp safe-area values");
+        Console.WriteLine("PASS MVVM settings state and device endpoint mapping");
+    }
+
+    private static void CaptureMainWindow(string path, int width, int height, bool dark, string page)
     {
         var settings = new AppSettings
         {
@@ -79,7 +199,7 @@ internal static class Program
             HasCompletedOnboarding = true,
             SelectedThemeId = "music-vinyl"
         };
-        var window = new MainWindow(settings)
+        var window = new MainWindow(settings, new InMemorySettingsStore(settings))
         {
             Width = width,
             Height = height,
@@ -89,9 +209,18 @@ internal static class Program
         };
         window.Show();
         WaitForDispatcher(TimeSpan.FromMilliseconds(1400));
-        if (appearance)
+        if (page == "appearance")
         {
             ((RadioButton)window.FindName("ThemeNav")).IsChecked = true;
+        }
+        else if (page == "automation")
+        {
+            ((RadioButton)window.FindName("AutomationNav")).IsChecked = true;
+        }
+        else if (page == "settings")
+        {
+            ((Button)window.FindName("EndpointShortcutButton")).RaiseEvent(
+                new RoutedEventArgs(Button.ClickEvent));
         }
         WaitForDispatcher(TimeSpan.FromMilliseconds(250));
         window.UpdateLayout();
@@ -143,7 +272,9 @@ internal static class Program
 		var window = new MainWindow(new AppSettings
 		{
 			AppearanceMode = AppearanceMode.Light,
-			HasCompletedOnboarding = true
+			HasCompletedOnboarding = true,
+			MinimizeToTray = false,
+			CloseToTray = false
 		});
 		window.Show();
 		WaitForDispatcher(TimeSpan.FromMilliseconds(900));
@@ -159,31 +290,60 @@ internal static class Program
 		Console.WriteLine("PASS runtime light/dark appearance switching");
 	}
 
+    private static void VerifySaveFailureIsHandled()
+    {
+        var settings = new AppSettings
+        {
+            HasCompletedOnboarding = true,
+            AutoPush = false,
+            MinimizeToTray = false,
+            CloseToTray = false
+        };
+        var window = new MainWindow(settings, new ThrowingSettingsStore(settings));
+        window.Show();
+        WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+        ((RadioButton)window.FindName("DarkAppearanceRadio")).IsChecked = true;
+        WaitForDispatcher(TimeSpan.FromMilliseconds(700));
+        var status = (TextBlock)window.FindName("DeviceStatusText");
+        Assert(status.Text == "保存失败",
+            "a settings-store failure must be handled without an unhandled UI exception");
+        window.Close();
+        Console.WriteLine("PASS settings save failures stay in-app instead of crashing the UI test host");
+    }
+
     private static void VerifyWorkspaceGeometry()
     {
         var window = new MainWindow();
 		Assert(window.Title == "灵犀68屏幕驱动", $"unexpected product title: {window.Title}");
         var workspace = (Grid)window.FindName("WorkspaceLayout");
         var content = (Grid)window.FindName("ContentLayout");
-        var gallery = (WrapPanel)window.FindName("ThemeListPanel");
+		var gallery = (ItemsControl)window.FindName("ThemeListPanel");
+		var categoryList = (ItemsControl)window.FindName("ThemeCategoryList");
+		var shell = (ShellViewModel)window.DataContext;
 		var locateCurrent = (Button)window.FindName("LocateCurrentButton");
+		var endpointShortcut = (Button)window.FindName("EndpointShortcutButton");
+		window.UpdateLayout();
+		WaitForDispatcher(TimeSpan.FromMilliseconds(50));
         Assert(workspace.ColumnDefinitions[0].Width.Value == 196,
             $"workspace sidebar must be 196px: {workspace.ColumnDefinitions[0].Width.Value}");
         Assert(content.ColumnDefinitions[2].Width.Value == 288,
             $"preview rail must remain 288px: {content.ColumnDefinitions[2].Width.Value}");
-        Assert(gallery.Children.OfType<RadioButton>().Count() == 19,
+        Assert(gallery.Items.Count == 19,
             "theme gallery must expose every built-in display scheme");
 		Assert(locateCurrent.Visibility == Visibility.Visible && Equals(locateCurrent.Content, "定位当前"),
 			"display page must expose a single locate-current action instead of mode tabs");
-		var categoryRow = (StackPanel)((StackPanel)window.FindName("ThemeLibraryPanel")).Children[0];
-		var musicCategory = categoryRow.Children.OfType<RadioButton>().Single(item => Equals(item.Tag, "music"));
-		musicCategory.IsChecked = true;
-		Assert(gallery.Children.Count == 5, "music category must narrow the gallery before locate-current");
+		Assert(categoryList.Items.Count == 6, "theme category choices must be supplied by the screen view model");
+		shell.Screen.Categories.Single(item => item.Id == "music").IsSelected = true;
+		Assert(gallery.Items.Count == 5, "music category must narrow the gallery before locate-current");
 		locateCurrent.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 		WaitForDispatcher(TimeSpan.FromMilliseconds(50));
-		Assert(gallery.Children.Count == 19 && gallery.Children.OfType<RadioButton>().Any(item => item.IsChecked == true),
+		Assert(gallery.Items.Count == 19 && shell.Screen.SelectedTheme?.IsSelected == true,
 			"locate-current must restore all schemes and select the active card");
-        window.Close();
+		endpointShortcut.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+		WaitForDispatcher(TimeSpan.FromMilliseconds(50));
+		Assert(shell.IsSettingsPage && endpointShortcut.ToolTip?.ToString()?.Contains("设置") == true,
+			"clicking the device-address shortcut must open the settings page");
+		window.Close();
 		Console.WriteLine("PASS compact sidebar, working locate-current action, 19-card gallery and fixed preview rail");
     }
 
@@ -568,4 +728,27 @@ internal static class Program
     }
 
     private sealed record RenderResult(double HostHeight, int InkTop, int InkBottom, int InkRows);
+
+    private sealed class InMemorySettingsStore(AppSettings settings) : ISettingsStore
+    {
+        private AppSettings _settings = settings;
+
+        public Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(_settings);
+
+        public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
+        {
+            _settings = settings;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingSettingsStore(AppSettings settings) : ISettingsStore
+    {
+        public Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(settings);
+
+        public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default) =>
+            Task.FromException(new UnauthorizedAccessException("Test settings path is unavailable."));
+    }
 }

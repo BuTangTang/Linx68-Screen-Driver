@@ -14,6 +14,23 @@ public enum ShellPage
 
 public partial class ShellViewModel : ObservableObject
 {
+    public ShellViewModel() : this(new ScreenViewModel())
+    {
+    }
+
+    public ShellViewModel(ScreenViewModel screen)
+    {
+        Screen = screen;
+    }
+
+    public ScreenViewModel Screen { get; }
+
+    public AppearanceViewModel Appearance { get; } = new();
+
+    public AutomationViewModel Automation { get; } = new();
+
+    public SettingsViewModel Settings { get; } = new();
+
     [ObservableProperty]
     private ShellPage currentPage = ShellPage.Screen;
 

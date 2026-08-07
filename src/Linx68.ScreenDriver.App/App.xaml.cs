@@ -52,8 +52,12 @@ public partial class App : System.Windows.Application
         builder.Services.AddSingleton<IStockSnapshotSource, YahooStockSnapshotSource>();
         builder.Services.AddSingleton<IDeviceTransport, HttpImageDeviceTransport>();
         builder.Services.AddSingleton<IDashboardSnapshotBuilder, DashboardSnapshotBuilder>();
-        builder.Services.AddSingleton<WindowsWeatherLocationProvider>();
+        builder.Services.AddSingleton<IAutomaticWeatherLocationProvider, WindowsWeatherLocationProvider>();
+        builder.Services.AddSingleton<IWeatherSettingsResolver, WeatherSettingsResolver>();
+        builder.Services.AddSingleton<IDashboardRefreshService, DashboardRefreshService>();
+        builder.Services.AddSingleton<IDisplayPushService, DisplayPushService>();
         builder.Services.AddSingleton<ImageTheme>();
+        builder.Services.AddSingleton<ScreenViewModel>();
         builder.Services.AddSingleton<ShellViewModel>();
         builder.Services.AddSingleton(_ => new FontFolderCatalog(
             Path.Combine(AppContext.BaseDirectory, "Fonts")));

@@ -19,12 +19,11 @@ archive/
 *.ttf
 *.otf
 *.ttc
-!src/KeyboardScreen.Core/Assets/Fonts/Doto.ttf
+!src/Linx68.ScreenDriver.Core/Assets/Fonts/Doto.ttf
 
 # Generated archives are rebuilt from source when needed.
 showcase/*.zip
 
-src/KeyboardScreen.App/Assets/Fonts/PingFang.ttc
 
 # Internal AI handoff documents are not public project material.
 AI_CONTEXT.md

@@ -100,13 +100,18 @@ powershell -ExecutionPolicy Bypass -File tools/Publish-Portable.ps1
 ## 项目结构
 
 ```text
-src/Linx68.ScreenDriver.App       WPF 桌面应用与交互界面
-src/Linx68.ScreenDriver.Core      主题渲染、数据模型和设备传输
-tests                         自动化与 UI 冒烟测试
-tools                         主题预览和绿色版构建工具
-docs/images                   README 与项目宣传图片
-showcase                      主题展示图片
+src/Linx68.ScreenDriver.App             WPF 宿主、页面 ViewModel 与交互界面
+src/Linx68.ScreenDriver.Application     刷新、推送、设置和数据源端口
+src/Linx68.ScreenDriver.Core            主题渲染、领域模型与纯解析逻辑
+src/Linx68.ScreenDriver.Infrastructure  Windows、HTTP、JSON 等端口实现
+tests/Linx68.ScreenDriver.SmokeTests    核心与集成烟雾测试
+tests/Linx68.ScreenDriver.UiSmokeTests  WPF 页面状态与几何烟雾测试
+tools                                  主题预览和绿色版构建工具
+docs/images                            README 与项目宣传图片
+showcase                               主题展示图片
 ```
+
+分层边界、刷新流程与扩展方式见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
 ## 许可证与归属
 

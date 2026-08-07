@@ -36,19 +36,31 @@ public partial class MainWindow : Window
 
 	private readonly IWeatherSnapshotSource _weatherSource;
 
-	private readonly WindowsWeatherLocationProvider _weatherLocationProvider;
+	private readonly IAutomaticWeatherLocationProvider _weatherLocationProvider;
 
 	private readonly IStockSnapshotSource _stockSource;
 
 	private readonly IDashboardSnapshotBuilder _snapshotBuilder;
 
+	private readonly IDashboardRefreshService _refreshService;
+
 	private readonly IDeviceTransport _transport;
+
+	private readonly IDisplayPushService _pushService;
 
 	private readonly ISettingsStore _settingsStore;
 
 	private readonly ImageTheme _imageTheme;
 
 	private readonly FontFolderCatalog _fontCatalog;
+
+	private readonly ScreenViewModel _screenViewModel;
+
+	private readonly AppearanceViewModel _appearanceViewModel;
+
+	private readonly AutomationViewModel _automationViewModel;
+
+	private readonly SettingsViewModel _settingsViewModel;
 
 	private readonly bool _ownsServices;
 
@@ -80,7 +92,11 @@ public partial class MainWindow : Window
 
 	private bool _suppressThemeRefresh;
 
-	private bool _updatingFontList;
+	private bool _updatingAppearance;
+
+	private bool _updatingAutomation;
+
+	private bool _updatingSettingsPage;
 
 	private bool _autoCommitRunning;
 
@@ -104,10 +120,6 @@ public partial class MainWindow : Window
 
 	private System.Windows.Controls.TextBox[] _endpointParts = [];
 
-	private bool _suppressEndpointPartSync;
-
-	private string _themeCategory = "all";
-
 	private bool _themeGalleryPreviewDirty;
 
 	public MainWindow(AppSettings? initialSettings = null)
@@ -120,8 +132,31 @@ public partial class MainWindow : Window
 			new WindowsWeatherLocationProvider(),
 			new YahooStockSnapshotSource(),
 			null,
+			null,
 			new HttpImageDeviceTransport(),
+			null,
 			new JsonSettingsStore(),
+			new ImageTheme(),
+			new FontFolderCatalog(System.IO.Path.Combine(AppContext.BaseDirectory, "Fonts")),
+			new ShellViewModel(),
+			ownsServices: true)
+	{
+	}
+
+	public MainWindow(AppSettings initialSettings, ISettingsStore settingsStore)
+		: this(
+			initialSettings,
+			new WindowsSystemSnapshotSource(),
+			new WindowsMusicSnapshotSource(),
+			new LrcLibLyricsSnapshotSource(),
+			new OpenMeteoWeatherSnapshotSource(),
+			new WindowsWeatherLocationProvider(),
+			new YahooStockSnapshotSource(),
+			null,
+			null,
+			new HttpImageDeviceTransport(),
+			null,
+			settingsStore,
 			new ImageTheme(),
 			new FontFolderCatalog(System.IO.Path.Combine(AppContext.BaseDirectory, "Fonts")),
 			new ShellViewModel(),
@@ -135,10 +170,12 @@ public partial class MainWindow : Window
 		IMusicSnapshotSource musicSource,
 		ILyricsSnapshotSource lyricsSource,
 		IWeatherSnapshotSource weatherSource,
-		WindowsWeatherLocationProvider weatherLocationProvider,
+		IAutomaticWeatherLocationProvider weatherLocationProvider,
 		IStockSnapshotSource stockSource,
 		IDashboardSnapshotBuilder snapshotBuilder,
+		IDashboardRefreshService refreshService,
 		IDeviceTransport transport,
+		IDisplayPushService pushService,
 		ISettingsStore settingsStore,
 		ImageTheme imageTheme,
 		FontFolderCatalog fontCatalog,
@@ -152,7 +189,9 @@ public partial class MainWindow : Window
 			weatherLocationProvider,
 			stockSource,
 			snapshotBuilder,
+			refreshService,
 			transport,
+			pushService,
 			settingsStore,
 			imageTheme,
 			fontCatalog,
@@ -167,10 +206,12 @@ public partial class MainWindow : Window
 		IMusicSnapshotSource musicSource,
 		ILyricsSnapshotSource lyricsSource,
 		IWeatherSnapshotSource weatherSource,
-		WindowsWeatherLocationProvider weatherLocationProvider,
+		IAutomaticWeatherLocationProvider weatherLocationProvider,
 		IStockSnapshotSource stockSource,
 		IDashboardSnapshotBuilder? snapshotBuilder,
+		IDashboardRefreshService? refreshService,
 		IDeviceTransport transport,
+		IDisplayPushService? pushService,
 		ISettingsStore settingsStore,
 		ImageTheme imageTheme,
 		FontFolderCatalog fontCatalog,
@@ -189,7 +230,12 @@ public partial class MainWindow : Window
 			lyricsSource,
 			weatherSource,
 			stockSource);
+		_refreshService = refreshService ?? new DashboardRefreshService(
+			musicSource,
+			_snapshotBuilder,
+			new WeatherSettingsResolver(weatherLocationProvider));
 		_transport = transport;
+		_pushService = pushService ?? new DisplayPushService(transport);
 		_settingsStore = settingsStore;
 		_imageTheme = imageTheme;
 		_fontCatalog = fontCatalog;
@@ -200,6 +246,14 @@ public partial class MainWindow : Window
 		}
 		InitializeComponent();
 		DataContext = shellViewModel;
+		_screenViewModel = shellViewModel.Screen;
+		_appearanceViewModel = shellViewModel.Appearance;
+		_automationViewModel = shellViewModel.Automation;
+		_settingsViewModel = shellViewModel.Settings;
+		_screenViewModel.ThemeSelected += ScreenViewModel_OnThemeSelected;
+		_appearanceViewModel.PropertyChanged += AppearanceViewModel_OnPropertyChanged;
+		_automationViewModel.PropertyChanged += AutomationViewModel_OnPropertyChanged;
+		_settingsViewModel.PropertyChanged += SettingsViewModel_OnPropertyChanged;
 		_endpointParts = [EndpointIpPart1, EndpointIpPart2, EndpointIpPart3, EndpointIpPart4];
 		_themeDefinitions = BuiltInThemes.CreateDefinitions(_imageTheme, () => _settings.Music?.LyricOffsetSeconds ?? 0);
 		BuildThemeList();
@@ -233,13 +287,17 @@ public partial class MainWindow : Window
 			{
 				(_transport as IDisposable)?.Dispose();
 				(_weatherSource as IDisposable)?.Dispose();
-				_weatherLocationProvider.Dispose();
+				(_weatherLocationProvider as IDisposable)?.Dispose();
 				(_stockSource as IDisposable)?.Dispose();
 				(_lyricsSource as IDisposable)?.Dispose();
 				(_musicSource as IDisposable)?.Dispose();
 				(_systemSource as IDisposable)?.Dispose();
-				_fontCatalog.Dispose();
+			_fontCatalog.Dispose();
 			}
+			_screenViewModel.ThemeSelected -= ScreenViewModel_OnThemeSelected;
+			_appearanceViewModel.PropertyChanged -= AppearanceViewModel_OnPropertyChanged;
+			_automationViewModel.PropertyChanged -= AutomationViewModel_OnPropertyChanged;
+			_settingsViewModel.PropertyChanged -= SettingsViewModel_OnPropertyChanged;
 			_miMoWindow?.Dispose();
 			SystemEvents.UserPreferenceChanged -= SystemEvents_OnUserPreferenceChanged;
 			_trayIcon.Visible = false;
@@ -253,111 +311,54 @@ public partial class MainWindow : Window
 
 	private void BuildThemeList()
 	{
-		ThemeListPanel.Children.Clear();
-		Style itemStyle = (Style)FindResource("ThemeGalleryCard");
 		bool previousSuppression = _suppressThemeRefresh;
 		_suppressThemeRefresh = true;
 		try
 		{
-			foreach (ThemeDefinition definition in _themeDefinitions.Where(definition =>
-				_themeCategory == "all" || definition.CategoryId == _themeCategory))
-			{
-				IScreenTheme theme = definition.Theme;
-				System.Windows.Controls.Image preview = new System.Windows.Controls.Image
-				{
-					Stretch = Stretch.UniformToFill,
-					SnapsToDevicePixels = false
-				};
-				try
-				{
-					RenderedFrame frame = _renderer.Render(theme, SystemSnapshot.DesignSample, 86, GetAccentColor(), GetSelectedFontFamily(), GetScreenDisplayOptions());
-					preview.Source = LoadBitmap(frame.JpegBytes);
-				}
-				catch
-				{
-					preview.Source = null;
-				}
-
-				StackPanel content = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-				content.Children.Add(new TextBlock
-				{
-					Text = theme.DisplayName,
-					FontSize = 14,
-					FontWeight = FontWeights.SemiBold,
-					TextTrimming = TextTrimming.CharacterEllipsis
-				});
-				TextBlock descriptionText = new TextBlock
-				{
-					Text = theme.Description,
-					FontSize = 11,
-					TextWrapping = TextWrapping.Wrap,
-					MaxHeight = 34,
-					Margin = new Thickness(0, 7, 0, 0)
-				};
-				descriptionText.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryText");
-				content.Children.Add(descriptionText);
-				TextBlock metadataText = new TextBlock
-				{
-					Text = $"{definition.CategoryDisplayName}  ·  {(definition.IsStatic ? "静态" : "动态")}",
-					FontSize = 10,
-					Margin = new Thickness(0, 12, 0, 0)
-				};
-				metadataText.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryText");
-				content.Children.Add(metadataText);
-
-				System.Windows.Controls.RadioButton radioButton = new System.Windows.Controls.RadioButton
-				{
-					Content = content,
-					DataContext = preview,
-					Tag = theme.Id,
-					GroupName = "Theme",
-					Style = itemStyle,
-					IsChecked = string.Equals(theme.Id, _settings.SelectedThemeId, StringComparison.OrdinalIgnoreCase)
-				};
-				radioButton.Checked += ThemeItem_OnChecked;
-				ThemeListPanel.Children.Add(radioButton);
-			}
+			_screenViewModel.SetThemes(
+				_themeDefinitions.Select(CreateThemeCard),
+				_settings.SelectedThemeId);
+			_screenViewModel.SelectTheme(_settings.SelectedThemeId, notify: true);
 		}
 		finally
 		{
 			_suppressThemeRefresh = previousSuppression;
 		}
-		ResizeThemeCards(ThemeListPanel.ActualWidth);
+		_screenViewModel.UpdateCardWidth(ThemeListPanel.ActualWidth);
 	}
 
-	private void ResizeThemeCards(double availableWidth)
+	private ThemeCardViewModel CreateThemeCard(ThemeDefinition definition)
 	{
-		if (availableWidth <= 0)
+		ImageSource? preview = null;
+		try
 		{
-			return;
+			RenderedFrame frame = _renderer.Render(
+				definition.Theme,
+				SystemSnapshot.DesignSample,
+				86,
+				GetAccentColor(),
+				GetSelectedFontFamily(),
+				GetScreenDisplayOptions());
+			preview = LoadBitmap(frame.JpegBytes);
 		}
-		double cardWidth = availableWidth >= 400 ? Math.Max(196, (availableWidth - 44) / 2) : Math.Max(196, availableWidth - 12);
-		foreach (System.Windows.Controls.RadioButton card in ThemeListPanel.Children.OfType<System.Windows.Controls.RadioButton>())
+		catch
 		{
-			card.Width = cardWidth;
+			// A failed gallery preview must not prevent the remaining themes from loading.
 		}
+
+		return new ThemeCardViewModel(definition, preview);
 	}
 
 	private void PopulateMediaAutomationThemeSelectors()
 	{
-		MediaIdleThemeComboBox.Items.Clear();
-		MediaPlayingThemeComboBox.Items.Clear();
-		foreach (ThemeDefinition definition in _themeDefinitions)
+		_updatingAutomation = true;
+		try
 		{
-			IScreenTheme theme = definition.Theme;
-			ComboBoxItem item = new ComboBoxItem
-			{
-				Content = theme.DisplayName,
-				Tag = theme.Id
-			};
-			if (definition.Category == ThemeCategory.Music)
-			{
-				MediaPlayingThemeComboBox.Items.Add(item);
-			}
-			else
-			{
-				MediaIdleThemeComboBox.Items.Add(item);
-			}
+			_automationViewModel.Load(_settings, _themeDefinitions);
+		}
+		finally
+		{
+			_updatingAutomation = false;
 		}
 	}
 	private NotifyIcon CreateTrayIcon()
@@ -465,11 +466,10 @@ public partial class MainWindow : Window
 	{
 		_settings = _initialSettings ?? await _settingsStore.LoadAsync();
 		ApplyAppearance();
-		ReloadFontOptions(_settings.SelectedFontId);
 		ApplySettingsToControls();
 		if (!_settings.HasCompletedOnboarding)
 		{
-			var guide = new FirstRunGuideWindow(ExtractDeviceIp(_settings.DeviceEndpoint))
+			var guide = new FirstRunGuideWindow(DeviceEndpoint.ExtractIp(_settings.DeviceEndpoint))
 			{
 				Owner = this
 			};
@@ -500,24 +500,25 @@ public partial class MainWindow : Window
 
 	private void ApplySettingsToControls()
 	{
-		PopulateEndpointParts(ExtractDeviceIp(_settings.DeviceEndpoint));
-		AutoPushCheckBox.IsChecked = _settings.AutoPush;
-		AutoMusicCheckBox.IsChecked = _settings.AutoSwitchToMusic;
-		MediaThemeAutomationCheckBox.IsChecked = _settings.AutoMediaThemeSwitch;
-		SelectComboByTag(MediaIdleThemeComboBox, _settings.MediaIdleThemeId ?? "system");
-		SelectComboByTag(MediaPlayingThemeComboBox, _settings.MediaPlayingThemeId ?? "music");
-		MinimizeToTrayCheckBox.IsChecked = _settings.MinimizeToTray;
-		CloseToTrayCheckBox.IsChecked = _settings.CloseToTray;
-		StartMinimizedCheckBox.IsChecked = _settings.StartMinimized;
-		LaunchAtStartupCheckBox.IsChecked = _settings.LaunchAtStartup;
-		SafeLeftTextBox.Text = _settings.SafeArea.Left.ToString();
-		SafeTopTextBox.Text = _settings.SafeArea.Top.ToString();
-		SafeRightTextBox.Text = _settings.SafeArea.Right.ToString();
-		SafeBottomTextBox.Text = _settings.SafeArea.Bottom.ToString();
-		AccentColorTextBox.Text = _settings.AccentColor;
-		SelectAppearanceMode(_settings.AppearanceMode);
-		SelectComboByTag(ImageTimePlacementComboBox, _settings.ImageTimePlacement.ToString());
-		RefreshIntervalSlider.Value = Math.Clamp(_settings.RefreshSeconds, 1, 30);
+		_updatingAppearance = true;
+		try
+		{
+			_appearanceViewModel.Load(_settings, _fontCatalog.Scan());
+		}
+		finally
+		{
+			_updatingAppearance = false;
+		}
+		PopulateMediaAutomationThemeSelectors();
+		_updatingSettingsPage = true;
+		try
+		{
+			_settingsViewModel.Load(_settings);
+		}
+		finally
+		{
+			_updatingSettingsPage = false;
+		}
 		AppSettings settings = _settings;
 		if (settings.AiQuota == null)
 		{
@@ -549,23 +550,10 @@ public partial class MainWindow : Window
 
 	private void ApplyControlsToSettings()
 	{
-		_settings.DeviceEndpoint = (TryCreateDeviceEndpoint(EndpointTextBox.Text, out Uri endpoint) ? endpoint.AbsoluteUri : EndpointTextBox.Text.Trim());
-		_settings.AutoPush = AutoPushCheckBox.IsChecked == true;
-		_settings.AutoSwitchToMusic = AutoMusicCheckBox.IsChecked == true;
-		_settings.AutoMediaThemeSwitch = MediaThemeAutomationCheckBox.IsChecked == true;
-		_settings.MediaIdleThemeId = ReadComboTag(MediaIdleThemeComboBox, "system");
-		_settings.MediaPlayingThemeId = ReadComboTag(MediaPlayingThemeComboBox, "music");
-		_settings.MinimizeToTray = MinimizeToTrayCheckBox.IsChecked == true;
-		_settings.CloseToTray = CloseToTrayCheckBox.IsChecked == true;
-		_settings.StartMinimized = StartMinimizedCheckBox.IsChecked == true;
-		_settings.LaunchAtStartup = LaunchAtStartupCheckBox.IsChecked == true;
+		_automationViewModel.ApplyTo(_settings);
+		_settingsViewModel.ApplyTo(_settings);
 		StartupRegistration.TrySetEnabled(_settings.LaunchAtStartup);
-		_settings.RefreshSeconds = (int)Math.Round(RefreshIntervalSlider.Value);
-		_settings.ImageTimePlacement = ReadComboEnum(ImageTimePlacementComboBox, ImageTimePlacement.Bottom);
-		_settings.AccentColor = (TryParseAccentColor(AccentColorTextBox.Text, out var _) ? AccentColorTextBox.Text.Trim().ToUpperInvariant() : "#E4694C");
-		_settings.AppearanceMode = ReadAppearanceMode();
-		_settings.SelectedFontId = (FontFamilyComboBox.SelectedItem as ScreenFontOption)?.Id ?? "builtin:segoe-variable-display";
-		_settings.SafeArea = ReadSafeArea();
+		_appearanceViewModel.ApplyTo(_settings);
 		_settings.ImagePath = _imageTheme.ImagePath;
 		_settings.SelectedThemeId = GetSelectedTheme()?.Id ?? "system";
 		_settings.AiQuota = new AiQuotaSettings
@@ -608,28 +596,6 @@ public partial class MainWindow : Window
 	{
 		ScreenProfile profile = new ScreenProfile(142, 428, 524288, _settings.SafeArea);
 		_renderer = new ScreenRenderer(profile);
-	}
-
-	private ScreenInsets ReadSafeArea()
-	{
-		int num = ReadClamped(SafeLeftTextBox.Text, 10, 0, 60);
-		int num2 = ReadClamped(SafeTopTextBox.Text, 52, 0, 160);
-		int num3 = ReadClamped(SafeRightTextBox.Text, 10, 0, 60);
-		int num4 = ReadClamped(SafeBottomTextBox.Text, 12, 0, 100);
-		if (num + num3 >= 132 || num2 + num4 >= 418)
-		{
-			return new ScreenInsets(10, 52, 10, 12);
-		}
-		return new ScreenInsets(num, num2, num3, num4);
-	}
-
-	private static int ReadClamped(string value, int fallback, int minimum, int maximum)
-	{
-		if (!int.TryParse(value, out var result))
-		{
-			return fallback;
-		}
-		return Math.Clamp(result, minimum, maximum);
 	}
 
 	private async void Timer_OnTick(object? sender, EventArgs e)
@@ -697,6 +663,11 @@ public partial class MainWindow : Window
 			_mediaAutomationThemeChanged = false;
 			await PushLatestAsync();
 		}
+		catch (Exception ex)
+		{
+			Trace.TraceError($"Failed to save or apply display settings: {ex}");
+			SetOperationFailure("保存失败");
+		}
 		finally
 		{
 			_autoCommitRunning = false;
@@ -717,40 +688,25 @@ public partial class MainWindow : Window
 		_busy = true;
 		try
 		{
-			MusicSnapshot currentMusic = await _musicSource.ReadAsync();
 			ThemeDefinition selectedDefinition = GetSelectedThemeDefinition() ?? _themeDefinitions[0];
-			IScreenTheme screenTheme = selectedDefinition.Theme;
-			bool mediaIsPlaying = currentMusic.Available && currentMusic.IsPlaying;
-			string effectiveThemeId = MediaThemeAutomation.ResolveThemeId(
-				_settings,
-				mediaIsPlaying,
-				screenTheme.Id,
-				id => GetThemeDefinition(id)?.Category == ThemeCategory.Music);
-			ThemeDefinition effectiveDefinition = GetThemeDefinition(effectiveThemeId)
-				?? GetThemeDefinition(mediaIsPlaying ? "music" : "system")
-				?? _themeDefinitions[0];
+			DashboardRefreshResult refresh = await _refreshService.RefreshAsync(
+				new DashboardRefreshRequest(
+					_themeDefinitions,
+					_settings,
+					selectedDefinition.Id,
+					_lastEffectiveThemeId,
+					ReadAiQuotaAsync));
+			ThemeDefinition effectiveDefinition = refresh.EffectiveTheme;
 			IScreenTheme theme2 = effectiveDefinition.Theme;
-			_mediaAutomationThemeChanged = _settings.AutoMediaThemeSwitch &&
-				_lastEffectiveThemeId != null &&
-				!string.Equals(_lastEffectiveThemeId, theme2.Id, StringComparison.OrdinalIgnoreCase);
+			_mediaAutomationThemeChanged = refresh.EffectiveThemeChanged;
 			_lastEffectiveThemeId = theme2.Id;
+			_automaticLocationFallback = refresh.UsedAutomaticWeatherLocationFallback;
 			bool needsLyrics = effectiveDefinition.Requires(ThemeDataRequirements.Lyrics);
-			AiQuotaSnapshot? aiQuota = effectiveDefinition.Requires(ThemeDataRequirements.AiQuota)
-				? await ReadAiQuotaAsync()
-				: null;
 			bool needsWeather = effectiveDefinition.Requires(ThemeDataRequirements.Weather);
-			WeatherSettings? effectiveWeatherSettings = needsWeather
-				? await ResolveEffectiveWeatherSettingsAsync()
-				: null;
 			bool needsStocks = effectiveDefinition.Requires(ThemeDataRequirements.Stocks);
-			_latestSnapshot = await _snapshotBuilder.BuildAsync(
-				effectiveDefinition,
-				_settings,
-				currentMusic,
-				effectiveWeatherSettings,
-				aiQuota);
+			_latestSnapshot = refresh.Snapshot;
 			SystemSnapshot system = _latestSnapshot;
-			MusicSnapshot musicSnapshot = system.Music ?? currentMusic;
+			MusicSnapshot musicSnapshot = system.Music ?? refresh.SourceMusic;
 			WeatherSnapshot? weather = system.Weather;
 			StockSnapshot? stocks = system.Stocks;
 			_latestFrame = _renderer.Render(theme2, _latestSnapshot, 100, GetAccentColor(), GetSelectedFontFamily(), GetScreenDisplayOptions());
@@ -782,8 +738,9 @@ public partial class MainWindow : Window
 				StockSourceStatusText.Text = stocks?.ErrorMessage ?? "请添加至少一个行情代码";
 			}
 		}
-		catch (Exception)
+		catch (Exception ex)
 		{
+			Trace.TraceWarning($"Failed to refresh display preview: {ex}");
 		}
 		finally
 		{
@@ -791,7 +748,7 @@ public partial class MainWindow : Window
 		}
 	}
 
-	private async Task<AiQuotaSnapshot?> ReadAiQuotaAsync()
+	private async Task<AiQuotaSnapshot?> ReadAiQuotaAsync(CancellationToken cancellationToken = default)
 	{
 		if (_miMoWindow == null)
 		{
@@ -800,7 +757,7 @@ public partial class MainWindow : Window
 		}
 		try
 		{
-			return UpdateMiMoUsage(await _miMoWindow.ReadAsync());
+			return UpdateMiMoUsage(await _miMoWindow.ReadAsync(cancellationToken));
 		}
 		catch (Exception ex)
 		{
@@ -872,35 +829,6 @@ public partial class MainWindow : Window
 			: WeatherLocationTextBox.Text.Trim();
 	}
 
-	private async Task<WeatherSettings> ResolveEffectiveWeatherSettingsAsync()
-	{
-		WeatherSettings saved = _settings.Weather ?? new WeatherSettings();
-		_automaticLocationFallback = false;
-		if (!saved.UseAutomaticLocation)
-		{
-			return saved;
-		}
-
-		AutomaticWeatherLocation? location = await _weatherLocationProvider.TryGetAsync();
-		if (location is null)
-		{
-			_automaticLocationFallback = true;
-			return new WeatherSettings
-			{
-				LocationQuery = string.IsNullOrWhiteSpace(saved.LocationQuery) ? "北京" : saved.LocationQuery
-			};
-		}
-
-		return new WeatherSettings
-		{
-			LocationQuery = saved.LocationQuery,
-			UseAutomaticLocation = true,
-			Latitude = location.Latitude,
-			Longitude = location.Longitude,
-			AutomaticLocationName = location.DisplayName
-		};
-	}
-
 	private static string FormatCompactNumber(decimal value)
 	{
 		if (value >= 1000000m)
@@ -964,7 +892,7 @@ public partial class MainWindow : Window
 		{
 			await RefreshPreviewAsync();
 		}
-		if (_latestFrame is null || !TryGetEndpoint(out Uri endpoint))
+		if (_latestFrame is null)
 		{
 			SetDeviceStatus(success: false);
 			return;
@@ -972,7 +900,7 @@ public partial class MainWindow : Window
 		_busy = true;
 		try
 		{
-			SetDeviceStatus((await _transport.PushAsync(endpoint, _latestFrame)).Success);
+			SetDeviceStatus((await _pushService.PushAsync(_settingsViewModel.EndpointIp, _latestFrame)).Success);
 		}
 		finally
 		{
@@ -980,32 +908,6 @@ public partial class MainWindow : Window
 		}
 	}
 
-	private bool TryGetEndpoint(out Uri endpoint)
-	{
-		return TryCreateDeviceEndpoint(EndpointTextBox.Text, out endpoint);
-	}
-
-	private static bool TryCreateDeviceEndpoint(string? value, out Uri endpoint)
-	{
-		endpoint = null!;
-		if (!IPAddress.TryParse(ExtractDeviceIp(value), out IPAddress? address) || address.AddressFamily != AddressFamily.InterNetwork)
-		{
-			return false;
-		}
-		endpoint = new Uri($"http://{address}/image/upload", UriKind.Absolute);
-		return true;
-	}
-
-	private static string ExtractDeviceIp(string? value)
-	{
-		string text = value?.Trim() ?? string.Empty;
-		if (Uri.TryCreate(text, UriKind.Absolute, out Uri? result)
-			&& (result.Scheme == Uri.UriSchemeHttp || result.Scheme == Uri.UriSchemeHttps))
-		{
-			return result.Host;
-		}
-		return text;
-	}
 
 	private IScreenTheme? GetSelectedTheme()
 	{
@@ -1025,108 +927,168 @@ public partial class MainWindow : Window
 
 	private void SelectTheme(string id)
 	{
-		_settings.SelectedThemeId = GetThemeDefinition(id)?.Id ?? _themeDefinitions[0].Id;
-		System.Windows.Controls.RadioButton? card = ThemeListPanel.Children.OfType<System.Windows.Controls.RadioButton>()
-			.FirstOrDefault(candidate => string.Equals(candidate.Tag?.ToString(), _settings.SelectedThemeId, StringComparison.OrdinalIgnoreCase));
-		if (card is not null)
-		{
-			card.IsChecked = true;
-		}
-	}
-
-	private void ThemeListPanel_OnSizeChanged(object sender, SizeChangedEventArgs e) => ResizeThemeCards(e.NewSize.Width);
-
-	private void ThemeCategory_OnChecked(object sender, RoutedEventArgs e)
-	{
-		if (sender is not System.Windows.Controls.RadioButton { Tag: string category } || ThemeListPanel is null)
+		if (_themeDefinitions.Count == 0)
 		{
 			return;
 		}
-		_themeCategory = category;
-		BuildThemeList();
+
+		_settings.SelectedThemeId = GetThemeDefinition(id)?.Id ?? _themeDefinitions[0].Id;
+		_screenViewModel.SelectTheme(_settings.SelectedThemeId, notify: true);
 	}
+
+	private void ThemeListPanel_OnSizeChanged(object sender, SizeChangedEventArgs e) =>
+		_screenViewModel.UpdateCardWidth(e.NewSize.Width);
 
 	private void LocateCurrent_OnClick(object sender, RoutedEventArgs e)
 	{
-		_themeCategory = "all";
-		if (AllThemeCategoryRadio.IsChecked != true)
-		{
-			AllThemeCategoryRadio.IsChecked = true;
-		}
-		else
-		{
-			BuildThemeList();
-		}
+		_screenViewModel.SelectCategory("all");
 
 		Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
 		{
-			System.Windows.Controls.RadioButton? current = ThemeListPanel.Children
-				.OfType<System.Windows.Controls.RadioButton>()
-				.FirstOrDefault(card => string.Equals(card.Tag?.ToString(), _settings.SelectedThemeId, StringComparison.OrdinalIgnoreCase));
-			current?.BringIntoView();
+			(ThemeListPanel.ItemContainerGenerator.ContainerFromItem(_screenViewModel.SelectedTheme) as FrameworkElement)
+				?.BringIntoView();
 		});
 	}
 
-	private void AppearanceMode_OnChecked(object sender, RoutedEventArgs e)
+	private void AppearanceViewModel_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
-		if (!_loaded || sender is not System.Windows.Controls.RadioButton { Tag: string mode } || !Enum.TryParse(mode, true, out AppearanceMode appearanceMode))
+		if (_updatingAppearance)
 		{
 			return;
 		}
-		_settings.AppearanceMode = appearanceMode;
-		ApplyAppearance();
+
+		switch (e.PropertyName)
+		{
+			case nameof(AppearanceViewModel.AppearanceMode):
+				_settings.AppearanceMode = _appearanceViewModel.AppearanceMode;
+				ApplyAppearance();
+				ScheduleAutoCommit();
+				break;
+			case nameof(AppearanceViewModel.AccentColor):
+				if (_appearanceViewModel.IsAccentColorValid)
+				{
+					_settings.AccentColor = _appearanceViewModel.AccentColor.Trim().ToUpperInvariant();
+					_themeGalleryPreviewDirty = true;
+					ScheduleAutoCommit();
+				}
+				break;
+			case nameof(AppearanceViewModel.SelectedFontOption):
+				if (_appearanceViewModel.SelectedFontOption is not null)
+				{
+					_settings.SelectedFontId = _appearanceViewModel.SelectedFontOption.Id;
+					_themeGalleryPreviewDirty = true;
+					if (_loaded)
+					{
+						_ = CommitAndPushAsync();
+					}
+				}
+				break;
+			case nameof(AppearanceViewModel.SelectedImageTimePlacement):
+				if (_appearanceViewModel.SelectedImageTimePlacement is not null)
+				{
+					_settings.ImageTimePlacement = _appearanceViewModel.SelectedImageTimePlacement.Value;
+					ScheduleAutoCommit();
+				}
+				break;
+		}
+	}
+
+	private void AutomationViewModel_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+	{
+		if (_updatingAutomation)
+		{
+			return;
+		}
+
+		switch (e.PropertyName)
+		{
+			case nameof(AutomationViewModel.AutoPush):
+				_settings.AutoPush = _automationViewModel.AutoPush;
+				break;
+			case nameof(AutomationViewModel.RefreshSeconds):
+				_settings.RefreshSeconds = _automationViewModel.RefreshSeconds;
+				_timer.Interval = TimeSpan.FromSeconds(_settings.RefreshSeconds);
+				break;
+			case nameof(AutomationViewModel.AutoSwitchToMusic):
+				_settings.AutoSwitchToMusic = _automationViewModel.AutoSwitchToMusic;
+				break;
+			case nameof(AutomationViewModel.AutoMediaThemeSwitch):
+				_settings.AutoMediaThemeSwitch = _automationViewModel.AutoMediaThemeSwitch;
+				break;
+			case nameof(AutomationViewModel.SelectedIdleTheme):
+				_settings.MediaIdleThemeId = _automationViewModel.SelectedIdleTheme?.Id ?? "system";
+				break;
+			case nameof(AutomationViewModel.SelectedPlayingTheme):
+				_settings.MediaPlayingThemeId = _automationViewModel.SelectedPlayingTheme?.Id ?? "music";
+				break;
+			default:
+				return;
+		}
+
 		ScheduleAutoCommit();
 	}
 
-	private void SelectAppearanceMode(AppearanceMode mode)
+	private void SettingsViewModel_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
-		System.Windows.Controls.RadioButton target = mode switch
+		if (_updatingSettingsPage)
 		{
-			AppearanceMode.Light => LightAppearanceRadio,
-			AppearanceMode.Dark => DarkAppearanceRadio,
-			_ => SystemAppearanceRadio
-		};
-		target.IsChecked = true;
-	}
+			return;
+		}
 
-	private AppearanceMode ReadAppearanceMode()
-	{
-		if (DarkAppearanceRadio.IsChecked == true) return AppearanceMode.Dark;
-		if (LightAppearanceRadio.IsChecked == true) return AppearanceMode.Light;
-		return AppearanceMode.System;
+		if (e.PropertyName == nameof(SettingsViewModel.EndpointIp))
+		{
+			UpdateEndpointSummary();
+			ScheduleAutoCommit();
+			return;
+		}
+
+		if (e.PropertyName is nameof(SettingsViewModel.SafeLeft)
+			or nameof(SettingsViewModel.SafeTop)
+			or nameof(SettingsViewModel.SafeRight)
+			or nameof(SettingsViewModel.SafeBottom)
+			or nameof(SettingsViewModel.MinimizeToTray)
+			or nameof(SettingsViewModel.CloseToTray)
+			or nameof(SettingsViewModel.StartMinimized)
+			or nameof(SettingsViewModel.LaunchAtStartup))
+		{
+			ScheduleAutoCommit();
+		}
 	}
 
 	private void UpdateEndpointSummary()
 	{
-		string ipString = ExtractDeviceIp(EndpointTextBox.Text);
+		string ipString = _settingsViewModel.EndpointIp;
 		EndpointSummaryText.Text = ((IPAddress.TryParse(ipString, out IPAddress? address) && address.AddressFamily == AddressFamily.InterNetwork) ? address.ToString() : "地址未配置");
 	}
 
-	private async void ThemeItem_OnChecked(object sender, RoutedEventArgs e)
+	private void ScreenViewModel_OnThemeSelected(ThemeDefinition definition)
 	{
-		if (sender is System.Windows.Controls.RadioButton radioButton)
+		_ = ApplyThemeSelectionAsync(definition);
+	}
+
+	private async Task ApplyThemeSelectionAsync(ThemeDefinition definition)
+	{
+		string id = definition.Id;
+		IScreenTheme screenTheme = definition.Theme;
+		CurrentThemeNameText.Text = screenTheme.DisplayName;
+		CurrentThemeDescription.Text = (definition.Shows(ThemeSettingsSections.Image) && !string.IsNullOrWhiteSpace(_imageTheme.ImagePath))
+			? _imageTheme.ImagePath
+			: screenTheme.Description;
+		CurrentThemeDetailsText.Text = screenTheme.Details;
+		SelectImageButton.Visibility = definition.Shows(ThemeSettingsSections.Image) ? Visibility.Visible : Visibility.Collapsed;
+		UpdateContextualDataCards(definition);
+		UpdateAutomationVisibility(definition);
+		if (_loaded)
 		{
-			string id = radioButton.Tag?.ToString() ?? "system";
-			ThemeDefinition definition = GetThemeDefinition(id) ?? _themeDefinitions[0];
-			IScreenTheme screenTheme = definition.Theme;
-			CurrentThemeNameText.Text = screenTheme.DisplayName;
-			CurrentThemeDescription.Text = ((id == "image" && !string.IsNullOrWhiteSpace(_imageTheme.ImagePath)) ? _imageTheme.ImagePath : screenTheme.Description);
-			CurrentThemeDetailsText.Text = screenTheme.Details;
-			SelectImageButton.Visibility = definition.Shows(ThemeSettingsSections.Image) ? Visibility.Visible : Visibility.Collapsed;
-			UpdateContextualDataCards(definition);
-			UpdateAutomationVisibility(definition);
-			if (_loaded)
-			{
-				InteractionMotion.Reveal(CurrentThemeNameText, 4.0, 0.996);
-				InteractionMotion.Reveal(CurrentThemeDescription, 4.0, 0.996);
-				InteractionMotion.Reveal(CurrentThemeDetailsText, 4.0, 0.996);
-			}
-			if (_loaded && !_suppressThemeRefresh)
-			{
-				await ShowOneTimeFeatureNoticeAsync(id);
-				_settings.SelectedThemeId = id;
-				await CommitAndPushAsync();
-			}
+			InteractionMotion.Reveal(CurrentThemeNameText, 4.0, 0.996);
+			InteractionMotion.Reveal(CurrentThemeDescription, 4.0, 0.996);
+			InteractionMotion.Reveal(CurrentThemeDetailsText, 4.0, 0.996);
+		}
+		if (_loaded && !_suppressThemeRefresh)
+		{
+			await ShowOneTimeFeatureNoticeAsync(id);
+			_settings.SelectedThemeId = id;
+			await CommitAndPushAsync();
 		}
 	}
 
@@ -1249,6 +1211,25 @@ public partial class MainWindow : Window
 		SettingsNav.IsChecked = true;
 	}
 
+	private void EndpointShortcutButton_OnClick(object sender, RoutedEventArgs e)
+	{
+		if (DataContext is ShellViewModel shellViewModel)
+		{
+			shellViewModel.NavigateCommand.Execute("settings");
+			if (_loaded)
+			{
+				InteractionMotion.Reveal(SettingsPanel, 8.0, 0.994);
+			}
+		}
+
+		Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+		{
+			ThemeScrollViewer.ScrollToTop();
+			EndpointIpPart1.Focus();
+			EndpointIpPart1.SelectAll();
+		});
+	}
+
 	private void ZCat95Link_OnClick(object sender, RoutedEventArgs e)
 	{
 		Process.Start(new ProcessStartInfo
@@ -1256,21 +1237,6 @@ public partial class MainWindow : Window
 			FileName = "https://github.com/zcat95",
 			UseShellExecute = true
 		});
-	}
-
-	private void RefreshIntervalSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-	{
-		int num = (int)Math.Round(e.NewValue);
-		if (RefreshIntervalValueText != null)
-		{
-			RefreshIntervalValueText.Text = $"{num} 秒";
-		}
-		if (_loaded)
-		{
-			_settings.RefreshSeconds = num;
-			_timer.Interval = TimeSpan.FromSeconds(num);
-			ScheduleAutoCommit();
-		}
 	}
 
 	private void LyricOffsetSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -1288,27 +1254,6 @@ public partial class MainWindow : Window
 		}
 	}
 
-	private void AccentColorTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
-	{
-		if (AccentColorPreview == null)
-		{
-			return;
-		}
-		if (!TryParseAccentColor(AccentColorTextBox.Text, out var color))
-		{
-			AccentColorTextBox.BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 74, 84));
-			return;
-		}
-		AccentColorTextBox.BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(217, 221, 229));
-		AccentColorPreview.Background = new SolidColorBrush(color);
-		if (_loaded)
-		{
-			_settings.AccentColor = AccentColorTextBox.Text.Trim().ToUpperInvariant();
-			_themeGalleryPreviewDirty = true;
-			ScheduleAutoCommit();
-		}
-	}
-
 	private async void ChooseAccentColorButton_OnClick(object sender, RoutedEventArgs e)
 	{
 		AccentColorDialog accentColorDialog = new AccentColorDialog(GetAccentColor())
@@ -1317,7 +1262,7 @@ public partial class MainWindow : Window
 		};
 		if (accentColorDialog.ShowDialog() == true)
 		{
-			AccentColorTextBox.Text = $"#{accentColorDialog.SelectedColor.R:X2}{accentColorDialog.SelectedColor.G:X2}{accentColorDialog.SelectedColor.B:X2}";
+			_appearanceViewModel.AccentColor = $"#{accentColorDialog.SelectedColor.R:X2}{accentColorDialog.SelectedColor.G:X2}{accentColorDialog.SelectedColor.B:X2}";
 			await RefreshPreviewAsync();
 		}
 	}
@@ -1332,24 +1277,11 @@ public partial class MainWindow : Window
 		});
 	}
 
-	private async void FontFamilyComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
-	{
-		if (!_updatingFontList && FontFamilyComboBox.SelectedItem is ScreenFontOption screenFontOption)
-		{
-			_settings.SelectedFontId = screenFontOption.Id;
-			if (_loaded)
-			{
-				_themeGalleryPreviewDirty = true;
-				await CommitAndPushAsync();
-			}
-		}
-	}
-
 	private void FontCatalog_OnFontsChanged(object? sender, EventArgs e)
 	{
 		Dispatcher.BeginInvoke(async () =>
 		{
-			string preferredId = (FontFamilyComboBox.SelectedItem as ScreenFontOption)?.Id ?? _settings.SelectedFontId;
+			string preferredId = _appearanceViewModel.SelectedFontOption?.Id ?? _settings.SelectedFontId;
 			ReloadFontOptions(preferredId);
 			if (_loaded)
 			{
@@ -1361,23 +1293,21 @@ public partial class MainWindow : Window
 	private void ReloadFontOptions(string? preferredId)
 	{
 		IReadOnlyList<ScreenFontOption> readOnlyList = _fontCatalog.Scan();
-		ScreenFontOption screenFontOption = readOnlyList.FirstOrDefault((ScreenFontOption font) => string.Equals(font.Id, preferredId, StringComparison.OrdinalIgnoreCase)) ?? ScreenFontOption.Default;
-		_updatingFontList = true;
+		_updatingAppearance = true;
 		try
 		{
-			FontFamilyComboBox.ItemsSource = readOnlyList;
-			FontFamilyComboBox.SelectedItem = screenFontOption;
+			_appearanceViewModel.SetFontOptions(readOnlyList, preferredId);
 		}
 		finally
 		{
-			_updatingFontList = false;
+			_updatingAppearance = false;
 		}
-		_settings.SelectedFontId = screenFontOption.Id;
+		_settings.SelectedFontId = _appearanceViewModel.SelectedFontOption?.Id ?? ScreenFontOption.Default.Id;
 	}
 
 	private System.Windows.Media.FontFamily GetSelectedFontFamily()
 	{
-		return (FontFamilyComboBox.SelectedItem as ScreenFontOption)?.FontFamily ?? ScreenFontOption.Default.FontFamily;
+		return _appearanceViewModel.SelectedFontOption?.FontFamily ?? ScreenFontOption.Default.FontFamily;
 	}
 
 	private ScreenDisplayOptions GetScreenDisplayOptions()
@@ -1387,35 +1317,13 @@ public partial class MainWindow : Window
 
 	private System.Windows.Media.Color GetAccentColor()
 	{
-		if (!TryParseAccentColor(_settings.AccentColor, out var color))
+		if (!AppearanceViewModel.TryParseAccentColor(_appearanceViewModel.AccentColor, out var color))
 		{
 			return System.Windows.Media.Color.FromRgb(228, 105, 76);
 		}
 		return color;
 	}
 
-	private static bool TryParseAccentColor(string? value, out System.Windows.Media.Color color)
-	{
-		color = default(System.Windows.Media.Color);
-		try
-		{
-			if (string.IsNullOrWhiteSpace(value) || !(System.Windows.Media.ColorConverter.ConvertFromString(value.Trim()) is System.Windows.Media.Color color2))
-			{
-				return false;
-			}
-			color = System.Windows.Media.Color.FromRgb(color2.R, color2.G, color2.B);
-			return true;
-		}
-		catch (FormatException)
-		{
-			return false;
-		}
-	}
-
-	private void MediaAutomationComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
-	{
-		ScheduleAutoCommit();
-	}
 	private void ThemeOptionComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
 	{
 		ScheduleAutoCommit();
@@ -1447,12 +1355,11 @@ public partial class MainWindow : Window
 
 	private void EndpointIpPart_OnTextChanged(object sender, TextChangedEventArgs e)
 	{
-		if (_suppressEndpointPartSync || sender is not System.Windows.Controls.TextBox textBox)
+		if (sender is not System.Windows.Controls.TextBox textBox)
 		{
 			return;
 		}
 
-		SyncEndpointTextFromParts();
 		if (textBox.Text.Length == 3 && int.TryParse(textBox.Text, out int value) && value <= 255)
 		{
 			int index = Array.IndexOf(_endpointParts, textBox);
@@ -1512,56 +1419,18 @@ public partial class MainWindow : Window
 
 	private void PopulateEndpointParts(string? value)
 	{
-		if (TryPopulateEndpointParts(value))
-		{
-			return;
-		}
-
-		_suppressEndpointPartSync = true;
-		try
-		{
-			foreach (System.Windows.Controls.TextBox part in _endpointParts)
-			{
-				part.Text = string.Empty;
-			}
-		}
-		finally
-		{
-			_suppressEndpointPartSync = false;
-		}
-		EndpointTextBox.Text = string.Empty;
+		_ = _settingsViewModel.SetEndpoint(value);
+		UpdateEndpointSummary();
 	}
 
 	private bool TryPopulateEndpointParts(string? value)
 	{
-		string candidate = ExtractDeviceIp(value);
-		if (!IPAddress.TryParse(candidate, out IPAddress? address) || address.AddressFamily != AddressFamily.InterNetwork)
+		bool isValid = _settingsViewModel.SetEndpoint(value);
+		if (isValid)
 		{
-			return false;
+			UpdateEndpointSummary();
 		}
-
-		string[] segments = address.ToString().Split('.');
-		_suppressEndpointPartSync = true;
-		try
-		{
-			for (int index = 0; index < _endpointParts.Length; index++)
-			{
-				_endpointParts[index].Text = segments[index];
-			}
-		}
-		finally
-		{
-			_suppressEndpointPartSync = false;
-		}
-		EndpointTextBox.Text = address.ToString();
-		UpdateEndpointSummary();
-		return true;
-	}
-
-	private void SyncEndpointTextFromParts()
-	{
-		EndpointTextBox.Text = string.Join(".", _endpointParts.Select(part => part.Text.Trim()));
-		UpdateEndpointSummary();
+		return isValid;
 	}
 
 	private static string ReadComboTag(System.Windows.Controls.ComboBox comboBox, string fallback)
@@ -1592,7 +1461,7 @@ public partial class MainWindow : Window
 		try
 		{
 			await InteractionMotion.HideAsync(WindowRoot, 4.0);
-			if (MinimizeToTrayCheckBox.IsChecked == true)
+			if (_settingsViewModel.MinimizeToTray)
 			{
 				HideToTray();
 				return;
@@ -1642,7 +1511,7 @@ public partial class MainWindow : Window
 				InteractionMotion.Reveal(WindowRoot, 8.0, 0.994);
 			}
 		}
-		else if (_loaded && MinimizeToTrayCheckBox.IsChecked == true)
+		else if (_loaded && _settingsViewModel.MinimizeToTray)
 		{
 			HideToTray();
 		}
@@ -1650,7 +1519,7 @@ public partial class MainWindow : Window
 
 	private void MainWindow_OnClosing(object? sender, CancelEventArgs e)
 	{
-		if (!_explicitExit && _loaded && CloseToTrayCheckBox.IsChecked == true)
+		if (!_explicitExit && _loaded && _settingsViewModel.CloseToTray)
 		{
 			e.Cancel = true;
 			HideToTray();
@@ -1734,6 +1603,14 @@ public partial class MainWindow : Window
 	{
 		DeviceStatusText.Text = (success ? "设备在线" : "断开连接");
 		System.Windows.Media.Brush brush = (success ? ((System.Windows.Media.Brush)FindResource("SuccessBrush")) : ((System.Windows.Media.Brush)FindResource("SecondaryText")));
+		DeviceStatusText.Foreground = brush;
+		DeviceStatusDot.Fill = brush;
+	}
+
+	private void SetOperationFailure(string message)
+	{
+		DeviceStatusText.Text = message;
+		System.Windows.Media.Brush brush = (System.Windows.Media.Brush)FindResource("DangerBrush");
 		DeviceStatusText.Foreground = brush;
 		DeviceStatusDot.Fill = brush;
 	}
