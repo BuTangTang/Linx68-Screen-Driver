@@ -1,5 +1,6 @@
 using Windows.Media.Control;
 using Windows.Storage.Streams;
+using System.Diagnostics;
 using Linx68.ScreenDriver.Application;
 using Linx68.ScreenDriver.Core;
 
@@ -40,6 +41,8 @@ internal static class WindowsMusicSessionSelector
 public sealed class WindowsMusicSnapshotSource : IMusicSnapshotSource
 {
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
+    private string? _netEaseWindowTrackKey;
+    private DateTimeOffset _netEaseWindowTrackStartedAt;
 
     public async ValueTask<MusicSnapshot> ReadAsync(CancellationToken cancellationToken = default)
     {
@@ -79,7 +82,52 @@ public sealed class WindowsMusicSnapshotSource : IMusicSnapshotSource
             // Windows may briefly invalidate the session collection while players open or close.
         }
 
-        return MusicSnapshot.Unavailable;
+        return TryReadNetEaseWindow() ?? MusicSnapshot.Unavailable;
+    }
+
+    private MusicSnapshot? TryReadNetEaseWindow()
+    {
+        foreach (Process process in Process.GetProcessesByName("cloudmusic"))
+        {
+            using (process)
+            {
+                try
+                {
+                    process.Refresh();
+                    if (process.MainWindowHandle == IntPtr.Zero ||
+                        !NetEaseWindowTitleParser.TryParse(process.MainWindowTitle, out string title, out string artist))
+                    {
+                        continue;
+                    }
+
+                    string trackKey = $"{title}\n{artist}";
+                    if (!string.Equals(_netEaseWindowTrackKey, trackKey, StringComparison.Ordinal))
+                    {
+                        _netEaseWindowTrackKey = trackKey;
+                        _netEaseWindowTrackStartedAt = DateTimeOffset.UtcNow;
+                    }
+
+                    return new MusicSnapshot(
+                        Available: true,
+                        title,
+                        artist,
+                        Position: DateTimeOffset.UtcNow - _netEaseWindowTrackStartedAt,
+                        Duration: TimeSpan.Zero,
+                        IsPlaying: true,
+                        Artwork: null)
+                    {
+                        SourceAppId = "cloudmusic.exe"
+                    };
+                }
+                catch
+                {
+                    // A Cloud Music process can exit or replace its main window while it is being queried.
+                }
+            }
+        }
+
+        _netEaseWindowTrackKey = null;
+        return null;
     }
 
     private static async Task<MusicSnapshot?> TryReadSessionAsync(
@@ -127,7 +175,8 @@ public sealed class WindowsMusicSnapshotSource : IMusicSnapshotSource
                 playback.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing,
                 artwork)
             {
-                SourceAppId = ReadSourceAppId(session)
+                SourceAppId = ReadSourceAppId(session),
+                AlbumTitle = properties.AlbumTitle ?? string.Empty
             };
         }
         catch (OperationCanceledException)
@@ -192,5 +241,35 @@ public sealed class WindowsMusicSnapshotSource : IMusicSnapshotSource
         byte[] data = new byte[length];
         reader.ReadBytes(data);
         return data;
+    }
+}
+
+internal static class NetEaseWindowTitleParser
+{
+    public static bool TryParse(string? value, out string title, out string artist)
+    {
+        title = string.Empty;
+        artist = string.Empty;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        string normalized = value.Trim();
+        if (string.Equals(normalized, "网易云音乐", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "NetEase Cloud Music", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        int separator = normalized.LastIndexOf(" - ", StringComparison.Ordinal);
+        if (separator <= 0 || separator >= normalized.Length - 3)
+        {
+            return false;
+        }
+
+        title = normalized[..separator].Trim();
+        artist = normalized[(separator + 3)..].Trim();
+        return title.Length > 0 && artist.Length > 0;
     }
 }

@@ -9,7 +9,7 @@ public enum AppearanceMode
 
 public sealed class AppSettings
 {
-	public const int CurrentSettingsVersion = 2;
+	public const int CurrentSettingsVersion = 3;
 
 	public int SettingsVersion { get; set; } = CurrentSettingsVersion;
 
@@ -49,6 +49,8 @@ public sealed class AppSettings
 	public bool HasAcknowledgedStockNotice { get; set; }
 
 	public bool HasAcknowledgedMiMoNotice { get; set; }
+
+	public bool HasAcknowledgedCodexNotice { get; set; }
 
 	public bool AutoSwitchToMusic { get; set; }
 

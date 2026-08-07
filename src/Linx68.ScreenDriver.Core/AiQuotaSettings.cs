@@ -2,7 +2,8 @@ namespace Linx68.ScreenDriver.Core;
 
 public enum AiQuotaSourceKind
 {
-    XiaomiMiMoTokenPlanChina
+    XiaomiMiMoTokenPlanChina,
+    OpenAICodex
 }
 
 public sealed class AiQuotaSettings

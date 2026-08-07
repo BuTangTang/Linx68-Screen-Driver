@@ -13,6 +13,36 @@ Assert(defaults.MinimizeToTray && defaults.CloseToTray, "first-run tray defaults
 Assert(defaults.Weather.UseAutomaticLocation, "first-run weather must use automatic location");
 Assert(defaults.SafeArea == new ScreenInsets(10, 52, 10, 12), "first-run safe area is incorrect");
 Assert(defaults.AppearanceMode == AppearanceMode.System, "first-run appearance must follow Windows");
+Assert(defaults.AiQuota.SourceKind == AiQuotaSourceKind.XiaomiMiMoTokenPlanChina,
+    "first-run AI source must preserve the existing MiMo integration");
+
+string codexTestRoot = Path.Combine(Path.GetTempPath(), "Linx68ScreenDriver", "codex-setup-" + Guid.NewGuid().ToString("N"));
+try
+{
+    var codexSetup = new CodexSetupService(Path.Combine(codexTestRoot, ".codex"));
+    Assert(CodexSetupService.ResolveCodexHome(@"C:\Users\Alice", null) == Path.Combine(@"C:\Users\Alice", ".codex"),
+        "Codex setup must default to the user's .codex folder");
+
+    string portableConfig = Path.Combine(codexTestRoot, "portable-config.toml");
+    Directory.CreateDirectory(codexTestRoot);
+    File.WriteAllText(portableConfig, "model = \"gpt-5.6\"\n");
+    string firstBackup = codexSetup.ImportConfig(portableConfig);
+    Assert(string.IsNullOrEmpty(firstBackup) && File.ReadAllText(codexSetup.ConfigPath).Contains("gpt-5.6"),
+        "Codex setup must import only the selected config.toml");
+
+    string exportedConfig = Path.Combine(codexTestRoot, "exported-config.toml");
+    codexSetup.ExportConfig(exportedConfig);
+    Assert(File.ReadAllText(exportedConfig) == File.ReadAllText(codexSetup.ConfigPath),
+        "Codex setup must export the current config.toml without credentials");
+
+    string backupPath = codexSetup.ImportConfig(portableConfig);
+    Assert(File.Exists(backupPath), "Codex setup must back up an existing config before import");
+    Console.WriteLine("PASS Codex setup keeps portable config separate from per-device credentials");
+}
+finally
+{
+    if (Directory.Exists(codexTestRoot)) Directory.Delete(codexTestRoot, recursive: true);
+}
 
 var orderedSessions = WindowsMusicSessionSelector.Order(
 [
@@ -30,6 +60,11 @@ orderedSessions = WindowsMusicSessionSelector.Order(
 Assert(orderedSessions.SequenceEqual([1, 0, 2]), "playing current session must remain the first choice");
 Assert(WindowsMusicSessionSelector.IsNetEase("cloudmusic.exe") && WindowsMusicSessionSelector.IsNetEase("NetEaseMusic"),
     "NetEase identifiers must be recognized case-insensitively");
+Assert(NetEaseWindowTitleParser.TryParse("Payphone - Maroon 5/Wiz Khalifa", out string windowTitle, out string windowArtist)
+       && windowTitle == "Payphone" && windowArtist == "Maroon 5/Wiz Khalifa",
+    "NetEase window title must provide fallback track metadata when no Windows media session exists");
+Assert(!NetEaseWindowTitleParser.TryParse("网易云音乐", out _, out _),
+    "NetEase application title must not be treated as a track");
 Console.WriteLine("PASS Windows media session ordering and NetEase identifiers");
 
 if (args.Contains("--music-probe", StringComparer.OrdinalIgnoreCase))
@@ -54,7 +89,7 @@ Assert(themes.All(theme => theme.Id != "week"), "removed week calendar theme mus
 Assert(themes.Single(theme => theme.Id == "clock-dot-matrix").DisplayName == "点阵时钟", "dot-matrix clock theme must be registered");
 Assert(themes.Single(theme => theme.Id == "clock-weather-dot").DisplayName == "点阵时钟天气", "dot-matrix weather clock theme must be registered");
 Assert(themes.Single(theme => theme.Id == "image").DisplayName == "图片时间", "image theme must be named 图片时间");
-Assert(themes.Single(theme => theme.Id == "ai-quota").DisplayName == "AI用量 (Beta)", "AI quota theme must carry the Beta label");
+Assert(themes.Single(theme => theme.Id == "ai-quota").DisplayName == "AI 用量（测试版）", "AI quota theme must carry the Chinese test-version label");
 Assert(themes.Any(theme => theme.Id == "weather-five-day"), "five-day weather theme must be registered");
 Assert(themes.Any(theme => theme.Id == "stocks"), "stock theme must be registered");
 Assert(themes.Single(theme => theme.Id == "music-vinyl").DisplayName == "动态黑胶", "dynamic vinyl theme must be registered");
@@ -269,6 +304,41 @@ using (var lyricSource = new LrcLibLyricsSnapshotSource(lyricClient))
     Assert(lyricHandler.RequestCount == 1, "cached lyrics read must not call LRCLIB again");
 }
 Console.WriteLine("PASS LRCLIB search response and per-track cache");
+
+var netEaseSearchResponses = new Queue<string>(new[]
+{
+    """{"result":{"songs":[{"id":987654,"name":"Demo Track","artists":[{"name":"Demo Artist"}],"album":{"name":"Demo Album"},"duration":225000}]}}"""
+});
+var netEaseSearchHandler = new SequenceHandler(netEaseSearchResponses);
+using (var netEaseSearchClient = new HttpClient(netEaseSearchHandler))
+using (var netEaseEnricher = new NetEaseMusicSnapshotEnricher(netEaseSearchClient))
+{
+    var netEaseMusic = SystemSnapshot.DesignSample.Music! with
+    {
+        SourceAppId = "cloudmusic.exe",
+        Title = "Demo Track",
+        Artist = "Demo Artist"
+    };
+    var enrichedMusic = await netEaseEnricher.EnrichAsync(netEaseMusic);
+    Assert(enrichedMusic.ProviderTrackId == 987654 && enrichedMusic.AlbumTitle == "Demo Album",
+        "NetEase search must resolve canonical metadata and its track ID");
+    var cachedMusic = await netEaseEnricher.EnrichAsync(netEaseMusic);
+    Assert(cachedMusic.ProviderTrackId == 987654 && netEaseSearchHandler.RequestCount == 1,
+        "NetEase metadata lookups must be cached per track");
+
+    var netEaseLyricResponses = new Queue<string>(new[]
+    {
+        """{"lrc":{"lyric":"[00:01.20] First line\n[00:03.45] Second line"}}"""
+    });
+    var netEaseLyricHandler = new SequenceHandler(netEaseLyricResponses);
+    using var netEaseLyricClient = new HttpClient(netEaseLyricHandler);
+    using var netEaseFallback = new LrcLibLyricsSnapshotSource();
+    using var netEaseLyrics = new NetEaseLyricsSnapshotSource(netEaseFallback, netEaseLyricClient);
+    var netEaseSnapshot = await netEaseLyrics.ReadAsync(enrichedMusic);
+    Assert(netEaseSnapshot.Available && netEaseSnapshot.Lines.Count == 2 && netEaseLyricHandler.RequestCount == 1,
+        "NetEase lyrics must use the resolved song ID and parse timed lines");
+}
+Console.WriteLine("PASS NetEase metadata resolution and timed lyrics");
 
 var animatedMusic = SystemSnapshot.DesignSample.Music! with
 {

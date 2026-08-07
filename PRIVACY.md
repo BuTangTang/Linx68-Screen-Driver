@@ -15,7 +15,7 @@ Optional online features contact third-party services directly:
 - Xiaomi MiMo quota information is read inside a WebView2 session after the
   user signs in to Xiaomi's website. This integration is experimental and is
   not an official Xiaomi integration. The platform may change or restrict this access at any time.
-- Online synchronized lyrics are disabled by default. When enabled for a dynamic music theme, the current track title, artist, and duration are sent directly to LRCLIB. Matching lyrics are cached in memory for the current application session and are not written to the settings file.
+- Online synchronized lyrics are disabled by default. When enabled for a dynamic music theme, the current track title, artist, and duration are sent directly to LRCLIB. For a NetEase Cloud Music media session, the track title is also sent to NetEase Cloud Music to resolve the canonical track metadata and obtain its timed lyrics. Matching metadata and lyrics are cached in memory for the current application session and are not written to the settings file.
 
 WebView2 sign-in state, including cookies and browser storage, is saved locally
 under `Data/MiMoWebView2` in portable mode or under the application's local

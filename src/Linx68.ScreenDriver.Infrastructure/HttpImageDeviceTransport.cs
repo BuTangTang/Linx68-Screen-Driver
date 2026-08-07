@@ -20,7 +20,7 @@ public sealed class HttpImageDeviceTransport : IDeviceTransport, IDisposable
 		_ownsClient = client == null;
 		_client = client ?? new HttpClient
 		{
-			Timeout = TimeSpan.FromSeconds(8.0)
+			Timeout = TimeSpan.FromSeconds(2.0)
 		};
 	}
 

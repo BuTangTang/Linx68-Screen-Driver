@@ -31,7 +31,7 @@ public sealed class MusicDashboardTheme(MusicDashboardStyle style, Func<double> 
 		Color secondary = Color.FromRgb(139, 149, 161);
 		Color accent = canvas.AccentColor;
 		canvas.Fill(background);
-		canvas.Text("NOW PLAYING", 9, secondary, new Point(safe.Left + 2, safe.Top + 5), FontWeights.SemiBold);
+		canvas.Text("正在播放", 9, secondary, new Point(safe.Left + 2, safe.Top + 5), FontWeights.SemiBold);
 		canvas.Text(ResolveSourceName(music.SourceAppId), 9, accent, new Point(safe.Left, safe.Top + 5), FontWeights.SemiBold, TextAlignment.Right, safe.Width);
 
 		double visualTop = safe.Top + 26;
@@ -53,8 +53,8 @@ public sealed class MusicDashboardTheme(MusicDashboardStyle style, Func<double> 
 		double percent = live ? (music.IsPlaying ? 100 : 0) : music.Position.TotalSeconds / music.Duration.TotalSeconds * 100;
 		double progressTop = titleTop + 130;
 		canvas.ProgressBar(new Rect(safe.Left, progressTop, safe.Width, 5), percent, Color.FromRgb(38, 44, 53), accent);
-		canvas.Text(live ? "LIVE" : FormatTime(music.Position), 10, live ? accent : secondary, new Point(safe.Left, progressTop + 11), FontWeights.SemiBold);
-		canvas.Text(live ? (music.IsPlaying ? "ON AIR" : "PAUSED") : FormatTime(music.Duration), 10, secondary, new Point(safe.Left, progressTop + 11), FontWeights.SemiBold, TextAlignment.Right, safe.Width);
+		canvas.Text(live ? "直播" : FormatTime(music.Position), 10, live ? accent : secondary, new Point(safe.Left, progressTop + 11), FontWeights.SemiBold);
+		canvas.Text(live ? (music.IsPlaying ? "直播中" : "已暂停") : FormatTime(music.Duration), 10, secondary, new Point(safe.Left, progressTop + 11), FontWeights.SemiBold, TextAlignment.Right, safe.Width);
 	}
 
 	private static void DrawVinyl(ScreenCanvas canvas, MusicSnapshot music, double top, Color accent)

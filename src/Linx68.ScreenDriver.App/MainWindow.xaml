@@ -14,17 +14,18 @@
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
     </Window.Resources>
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="64" ResizeBorderThickness="7" CornerRadius="0" GlassFrameThickness="-1" />
+        <shell:WindowChrome CaptionHeight="56" ResizeBorderThickness="7" CornerRadius="0" GlassFrameThickness="-1" />
     </shell:WindowChrome.WindowChrome>
 
-    <Border x:Name="WindowRoot" Background="Transparent" CornerRadius="{StaticResource Radius.Window}" BorderBrush="Transparent" BorderThickness="1">
+    <Border x:Name="WindowRoot" Background="{DynamicResource AppBackground}" CornerRadius="{StaticResource Radius.Window}" BorderBrush="{DynamicResource Stroke.Default}" BorderThickness="1">
         <Grid>
-            <Grid.RowDefinitions><RowDefinition Height="64" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="56" /><RowDefinition Height="*" /></Grid.RowDefinitions>
 
-            <Grid x:Name="TitleBar" Grid.Row="0">
+            <Grid x:Name="TitleBar" Grid.Row="0" Background="{DynamicResource AppBackground}">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="22,0,0,0">
-                    <TextBlock Text="灵犀68屏幕驱动" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Image Width="20" Height="20" Source="pack://application:,,,/Linx68.ScreenDriver.App;component/Assets/AppIcon.png" Margin="0,0,10,0" />
+                    <TextBlock Text="灵犀68屏幕驱动" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TitleBarForeground}" VerticalAlignment="Center" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
                     <Button shell:WindowChrome.IsHitTestVisibleInChrome="True" Style="{StaticResource TitleBarButton}" ToolTip="最小化" Click="MinimizeButton_OnClick">
@@ -56,40 +57,43 @@
                         <Path Width="12" Height="12" Data="M 1.5,1.5 L 10.5,10.5 M 10.5,1.5 L 1.5,10.5" Stretch="None" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" StrokeStartLineCap="Square" StrokeEndLineCap="Square" />
                     </Button>
                 </StackPanel>
+                <Border Height="1" VerticalAlignment="Bottom" Background="{DynamicResource HairlineBrush}" />
             </Grid>
 
             <Grid x:Name="WorkspaceLayout" Grid.Row="1" Margin="18,0,18,18">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="196" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
 
-                <Grid x:Name="SidebarShell" Grid.Column="0" Margin="0,10,0,0" Background="{DynamicResource Surface.Sidebar}">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                    <StackPanel Margin="16,16,16,0">
-                        <TextBlock Text="灵犀68屏幕驱动" FontSize="21" FontWeight="Bold" />
-                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <Ellipse x:Name="DeviceStatusDot" Width="9" Height="9" Fill="{DynamicResource DangerBrush}" Margin="0,0,8,0" />
-                            <TextBlock x:Name="DeviceStatusText" Text="设备离线" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}" />
-                        </StackPanel>
-                    </StackPanel>
-
-                    <StackPanel x:Name="SidebarNavigationPanel" Grid.Row="1" Margin="8,22,8,0">
-                        <RadioButton x:Name="ScreenNav" GroupName="Navigation" Content="显示方案" Style="{StaticResource SideNavRadio}" Tag="screen" Checked="Navigation_OnChecked" IsChecked="{Binding IsScreenPage, Mode=OneWay}" />
-                        <RadioButton x:Name="AutomationNav" GroupName="Navigation" Content="自动化" Style="{StaticResource SideNavRadio}" Tag="automation" Checked="Navigation_OnChecked" IsChecked="{Binding IsAutomationPage, Mode=OneWay}" />
-                        <RadioButton x:Name="ThemeNav" GroupName="Navigation" Content="外观" Style="{StaticResource SideNavRadio}" Tag="appearance" Checked="Navigation_OnChecked" IsChecked="{Binding IsAppearancePage, Mode=OneWay}" />
-                        <RadioButton x:Name="SettingsNav" GroupName="Navigation" Content="其他设置" Style="{StaticResource SideNavRadio}" Tag="settings" Checked="Navigation_OnChecked" IsChecked="{Binding IsSettingsPage, Mode=OneWay}" />
-                        <RadioButton x:Name="AboutNav" GroupName="Navigation" Content="关于" Style="{StaticResource SideNavRadio}" Tag="about" Checked="Navigation_OnChecked" IsChecked="{Binding IsAboutPage, Mode=OneWay}" />
-                    </StackPanel>
-
-                    <Button x:Name="EndpointShortcutButton" Grid.Row="2" Style="{StaticResource SidebarEndpointButton}" Click="EndpointShortcutButton_OnClick" ToolTip="点击设置设备地址">
-                        <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="设备地址" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}" />
-                                <TextBlock x:Name="EndpointSummaryText" Text="地址未配置" FontSize="15" FontWeight="SemiBold" Margin="0,5,0,0" />
+                <Border Grid.Column="0" Margin="0,10,0,0" Background="{DynamicResource Surface.Sidebar}" CornerRadius="{StaticResource Radius.Window}" BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1" ClipToBounds="True">
+                    <Grid x:Name="SidebarShell">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                        <StackPanel Margin="16,16,16,0">
+                            <TextBlock Text="灵犀68屏幕驱动" FontSize="21" FontWeight="Bold" />
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Ellipse x:Name="DeviceStatusDot" Width="9" Height="9" Fill="{DynamicResource DangerBrush}" Margin="0,0,8,0" />
+                                <TextBlock x:Name="DeviceStatusText" Text="设备离线" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="设置 ›" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
-                        </Grid>
-                    </Button>
-                </Grid>
+                        </StackPanel>
+
+                        <StackPanel x:Name="SidebarNavigationPanel" Grid.Row="1" Margin="8,22,8,0">
+                            <RadioButton x:Name="ScreenNav" GroupName="Navigation" Content="显示方案" Style="{StaticResource SideNavRadio}" Tag="screen" Checked="Navigation_OnChecked" IsChecked="{Binding IsScreenPage, Mode=OneWay}" />
+                            <RadioButton x:Name="AutomationNav" GroupName="Navigation" Content="自动化" Style="{StaticResource SideNavRadio}" Tag="automation" Checked="Navigation_OnChecked" IsChecked="{Binding IsAutomationPage, Mode=OneWay}" />
+                            <RadioButton x:Name="ThemeNav" GroupName="Navigation" Content="外观" Style="{StaticResource SideNavRadio}" Tag="appearance" Checked="Navigation_OnChecked" IsChecked="{Binding IsAppearancePage, Mode=OneWay}" />
+                            <RadioButton x:Name="SettingsNav" GroupName="Navigation" Content="其他设置" Style="{StaticResource SideNavRadio}" Tag="settings" Checked="Navigation_OnChecked" IsChecked="{Binding IsSettingsPage, Mode=OneWay}" />
+                            <RadioButton x:Name="AboutNav" GroupName="Navigation" Content="关于" Style="{StaticResource SideNavRadio}" Tag="about" Checked="Navigation_OnChecked" IsChecked="{Binding IsAboutPage, Mode=OneWay}" />
+                        </StackPanel>
+
+                        <Button x:Name="EndpointShortcutButton" Grid.Row="2" Style="{StaticResource SidebarEndpointButton}" Click="EndpointShortcutButton_OnClick" ToolTip="点击设置设备地址">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="设备地址" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}" />
+                                    <TextBlock x:Name="EndpointSummaryText" Text="地址未配置" FontSize="15" FontWeight="SemiBold" Margin="0,5,0,0" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="设置 ›" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+                            </Grid>
+                        </Button>
+                    </Grid>
+                </Border>
 
                 <Border Grid.Column="2" Background="{DynamicResource Surface.Window}" CornerRadius="{StaticResource Radius.Window}" Margin="0,10,0,0" Padding="24,20">
                     <Grid>
@@ -105,50 +109,45 @@
 
                         <Grid x:Name="ContentLayout" Grid.Row="1">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="20" /><ColumnDefinition Width="288" /></Grid.ColumnDefinitions>
-                            <ScrollViewer x:Name="ThemeScrollViewer" Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" FocusVisualStyle="{x:Null}" KeyboardNavigation.IsTabStop="False">
+                            <ScrollViewer x:Name="ThemeScrollViewer" Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" FocusVisualStyle="{x:Null}" KeyboardNavigation.IsTabStop="False" SizeChanged="ThemeScrollViewer_OnSizeChanged">
                                 <Grid>
-                                    <Grid x:Name="ScreenPanel" Visibility="{Binding IsScreenPage, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <StackPanel x:Name="ThemeLibraryPanel">
-                                            <ItemsControl x:Name="ThemeGroupPanel" ItemsSource="{Binding Screen.ThemeGroups}" SizeChanged="ThemeGroupPanel_OnSizeChanged">
+                                    <Grid x:Name="ScreenPanel" Width="{Binding ViewportWidth, ElementName=ThemeScrollViewer}" Visibility="{Binding IsScreenPage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="142" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <StackPanel x:Name="ThemeCategoryNavigation" VerticalAlignment="Top">
+                                            <TextBlock Text="方案分类" FontSize="12" FontWeight="SemiBold" Margin="8,4,8,12" />
+                                            <RadioButton Tag="all" GroupName="ThemeCategory" Style="{StaticResource ThemeCategoryRadio}" Checked="ThemeCategory_OnChecked" IsChecked="{Binding Screen.IsAllCategorySelected, Mode=OneWay}">
+                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="全部方案" /><TextBlock Grid.Column="1" Text="{Binding Screen.AllThemeCount}" Foreground="{DynamicResource SecondaryText}" /></Grid>
+                                            </RadioButton>
+                                            <ItemsControl x:Name="ThemeCategoryPanel" ItemsSource="{Binding Screen.ThemeGroups}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
-                                                        <Border Background="{DynamicResource Surface.Window}" BorderBrush="{DynamicResource Stroke.Default}" BorderThickness="1"
-                                                                CornerRadius="{StaticResource Radius.Card}" Padding="14" Margin="0,0,0,20">
-                                                            <StackPanel>
-                                                                <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="{StaticResource Radius.Control}" Padding="12,10" Margin="0,0,0,14">
-                                                                    <Grid>
-                                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="4" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                                                        <Border Width="4" Background="{DynamicResource AccentBrush}" CornerRadius="{StaticResource Radius.Small}" />
-                                                                        <StackPanel Grid.Column="2">
-                                                                            <TextBlock Text="{Binding DisplayName}" FontSize="16" FontWeight="SemiBold" />
-                                                                            <TextBlock Text="{Binding Description}" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,3,0,0" />
-                                                                        </StackPanel>
-                                                                        <TextBlock Grid.Column="3" Text="{Binding CountText}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
-                                                                    </Grid>
-                                                                </Border>
-                                                                <ItemsControl ItemsSource="{Binding Themes}">
-                                                                    <ItemsControl.ItemsPanel>
-                                                                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-                                                                    </ItemsControl.ItemsPanel>
-                                                                    <ItemsControl.ItemTemplate>
-                                                                        <DataTemplate>
-                                                                            <RadioButton GroupName="Theme" Style="{StaticResource ThemeGalleryCard}"
-                                                                                         Width="{Binding CardWidth}" IsChecked="{Binding IsSelected, Mode=TwoWay}">
-                                                                                <StackPanel VerticalAlignment="Center">
-                                                                                    <TextBlock Text="{Binding DisplayName}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                                                                    <TextBlock Text="{Binding Description}" FontSize="11" TextWrapping="Wrap" MaxHeight="34" Margin="0,7,0,0" Foreground="{DynamicResource SecondaryText}" />
-                                                                                    <TextBlock Text="{Binding Metadata}" FontSize="10" Margin="0,12,0,0" Foreground="{DynamicResource SecondaryText}" />
-                                                                                </StackPanel>
-                                                                            </RadioButton>
-                                                                        </DataTemplate>
-                                                                    </ItemsControl.ItemTemplate>
-                                                                </ItemsControl>
-                                                            </StackPanel>
-                                                        </Border>
+                                                        <RadioButton Tag="{Binding Id}" GroupName="ThemeCategory" Style="{StaticResource ThemeCategoryRadio}" Checked="ThemeCategory_OnChecked" IsChecked="{Binding IsSelected, Mode=OneWay}">
+                                                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="1" Text="{Binding Themes.Count}" Foreground="{DynamicResource SecondaryText}" /></Grid>
+                                                        </RadioButton>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
                                         </StackPanel>
+                                        <Grid Grid.Column="2" x:Name="ThemeLibraryPanel">
+                                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                            <TextBlock Text="{Binding Screen.VisibleThemeCountText}" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,12" />
+                                            <ItemsControl x:Name="ThemeGalleryPanel" Grid.Row="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" ItemsSource="{Binding Screen.VisibleThemes}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <RadioButton GroupName="Theme" Style="{StaticResource ThemeGalleryCard}"
+                                                                     Width="{Binding CardWidth}" IsChecked="{Binding IsSelected, Mode=TwoWay}">
+                                                            <StackPanel>
+                                                                <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock Text="{Binding Description}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" Foreground="{DynamicResource SecondaryText}" />
+                                                            </StackPanel>
+                                                        </RadioButton>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Grid>
                                         <StackPanel x:Name="CurrentConfigPanel" Visibility="Collapsed">
                                         <Border Style="{StaticResource SectionCard}">
                                             <Grid>
@@ -213,14 +212,33 @@
                                                         <ColumnDefinition />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="Xiaomi MiMo Token Plan (Beta)" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                    <TextBlock Text="AI 用量数据源（测试版）" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
                                                     <TextBlock x:Name="AiSourceStatusText" Grid.Column="1" Text="尚未连接"
                                                                FontSize="11" Foreground="{DynamicResource SecondaryText}"
                                                                VerticalAlignment="Center" Margin="16,0,0,0" />
                                                 </Grid>
-                                                <TextBlock Text="China · 读取订阅套餐的真实 Credits，用量信息仅保存在本机。"
+                                                <TextBlock x:Name="AiSourceDescriptionText" Text="选择用于 AI 用量主题的数据源。"
                                                            FontSize="12" Foreground="{DynamicResource SecondaryText}"
                                                            Margin="0,7,0,16" TextWrapping="Wrap" />
+
+                                                <Border Style="{StaticResource InlineSurface}" Padding="16,12" Margin="0,0,0,12">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition />
+                                                            <ColumnDefinition Width="320" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel VerticalAlignment="Center">
+                                                            <TextBlock Text="数据源" FontSize="13" FontWeight="SemiBold" />
+                                                            <TextBlock Text="不同平台的登录资料不会互相迁移" FontSize="11"
+                                                                       Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" />
+                                                        </StackPanel>
+                                                        <ComboBox x:Name="AiSourceComboBox" Grid.Column="1" SelectedValuePath="Tag"
+                                                                  SelectionChanged="AiSourceComboBox_OnSelectionChanged">
+                                                            <ComboBoxItem Tag="MiMo" Content="小米 MiMo 额度" />
+                                                            <ComboBoxItem Tag="Codex" Content="OpenAI Codex 额度" />
+                                                        </ComboBox>
+                                                    </Grid>
+                                                </Border>
 
                                                 <Border Style="{StaticResource InlineSurface}" Padding="16,12" Margin="0,0,0,12">
                                                     <Grid>
@@ -283,11 +301,19 @@
                                                     </StackPanel>
                                                 </Border>
 
-                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                                                <StackPanel x:Name="MiMoActionsPanel" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
                                                     <Button Content="登录小米控制台" MinWidth="138" Click="MiMoLoginButton_OnClick" />
                                                     <Button Content="立即刷新" Style="{StaticResource SecondaryButton}"
                                                             MinWidth="104" Margin="8,0,0,0" Click="MiMoRefreshButton_OnClick" />
                                                 </StackPanel>
+                                                <WrapPanel x:Name="CodexActionsPanel" HorizontalAlignment="Right" Margin="0,12,0,0" Visibility="Collapsed">
+                                                    <Button Content="安装/更新 Codex" MinWidth="126" Click="CodexInstallButton_OnClick" />
+                                                    <Button Content="登录 Codex" MinWidth="104" Margin="8,0,0,8" Click="CodexLoginButton_OnClick" />
+                                                    <Button Content="检查状态" Style="{StaticResource SecondaryButton}" MinWidth="92" Margin="8,0,0,8" Click="CodexStatusButton_OnClick" />
+                                                    <Button Content="打开配置" Style="{StaticResource SecondaryButton}" MinWidth="92" Margin="8,0,0,8" Click="CodexOpenConfigButton_OnClick" />
+                                                    <Button Content="导出配置" Style="{StaticResource SecondaryButton}" MinWidth="92" Margin="8,0,0,8" Click="CodexExportConfigButton_OnClick" />
+                                                    <Button Content="导入配置" Style="{StaticResource SecondaryButton}" MinWidth="92" Margin="8,0,0,8" Click="CodexImportConfigButton_OnClick" />
+                                                </WrapPanel>
                                             </StackPanel>
                                         </Border>
                                         <Border x:Name="WeatherDataCard" Style="{StaticResource SectionCard}" Visibility="Collapsed">
@@ -320,7 +346,7 @@
                                         </Border>
                                         <Border x:Name="StockDataCard" Style="{StaticResource SectionCard}" Visibility="Collapsed">
                                             <StackPanel>
-                                                <TextBlock Text="股票 (Beta)" FontSize="16" FontWeight="SemiBold" />
+                                                <TextBlock Text="股票（测试版）" FontSize="16" FontWeight="SemiBold" />
                                                 <TextBlock Text="最多添加三项。代码示例：AAPL、0700.HK、600519.SS、000001.SZ、BTC-USD。数据可能延迟或不准确，不构成投资建议。"
                                                            FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,14" TextWrapping="Wrap" />
                                                 <Grid Margin="0,0,0,6">
@@ -442,8 +468,32 @@
 
 
                                     <StackPanel x:Name="AutomationPanel" Visibility="{Binding IsAutomationPage, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <Border Style="{StaticResource SectionCard}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="定时推送" FontSize="16" FontWeight="SemiBold" /><TextBlock Text="动态方案按设定间隔推送；图片方案仅在导入后自动推送一次。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0" /></StackPanel><CheckBox x:Name="AutoPushCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Automation.AutoPush, Mode=TwoWay}" /></Grid></Border>
-                                        <Border Style="{StaticResource SectionCard}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="220" /><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="58" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="刷新间隔" FontSize="15" FontWeight="SemiBold" /><TextBlock Text="可设置为 1–30 秒中的任意整数。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0" /></StackPanel><Slider x:Name="RefreshIntervalSlider" Grid.Column="1" Minimum="1" Maximum="30" Value="{Binding Automation.RefreshSeconds, Mode=TwoWay}" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" /><Border Grid.Column="3" Style="{StaticResource InlineSurface}" Height="36" VerticalAlignment="Center"><TextBlock x:Name="RefreshIntervalValueText" Text="{Binding Automation.RefreshSeconds, StringFormat={}{0} 秒}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border></Grid></Border>
+                                        <Border x:Name="PushAutomationCard" Style="{StaticResource SectionCard}" Padding="0">
+                                            <Grid>
+                                                <Grid.RowDefinitions><RowDefinition Height="78" /><RowDefinition Height="1" /><RowDefinition Height="82" /></Grid.RowDefinitions>
+                                                <Grid Margin="20,0">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock Text="定时推送" FontSize="16" FontWeight="SemiBold" />
+                                                        <TextBlock Text="动态方案按设定间隔推送；图片方案仅在导入后推送一次。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,0" />
+                                                    </StackPanel>
+                                                    <CheckBox x:Name="AutoPushCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Automation.AutoPush, Mode=TwoWay}" />
+                                                </Grid>
+                                                <Border Grid.Row="1" Height="1" Margin="20,0" Background="{DynamicResource HairlineBrush}" />
+                                                <Grid x:Name="RefreshIntervalPanel" Grid.Row="2" Margin="20,0" IsEnabled="{Binding Automation.AutoPush}">
+                                                    <Grid.Style>
+                                                        <Style TargetType="Grid">
+                                                            <Setter Property="Opacity" Value="0.48" />
+                                                            <Style.Triggers><DataTrigger Binding="{Binding Automation.AutoPush}" Value="True"><Setter Property="Opacity" Value="1" /></DataTrigger></Style.Triggers>
+                                                        </Style>
+                                                    </Grid.Style>
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="220" /><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="58" /></Grid.ColumnDefinitions>
+                                                    <StackPanel VerticalAlignment="Center"><TextBlock Text="刷新间隔" FontSize="15" FontWeight="SemiBold" /><TextBlock Text="关闭定时推送后，此项不会生效。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,0" /></StackPanel>
+                                                    <Slider x:Name="RefreshIntervalSlider" Grid.Column="1" Minimum="1" Maximum="30" Value="{Binding Automation.RefreshSeconds, Mode=TwoWay}" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" />
+                                                    <Border Grid.Column="3" Style="{StaticResource InlineSurface}" Height="36" VerticalAlignment="Center"><TextBlock x:Name="RefreshIntervalValueText" Text="{Binding Automation.RefreshSeconds, StringFormat={}{0} 秒}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                                                </Grid>
+                                            </Grid>
+                                        </Border>
                                         <Border x:Name="AutoMusicCard" Style="{StaticResource SectionCard}">
                                             <Grid>
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -490,17 +540,21 @@
                                                 <TextBlock Text="设备地址" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
                                                 <TextBox x:Name="EndpointTextBox" Visibility="Collapsed"
                                                          Text="{Binding Settings.EndpointIp, Mode=OneWay}" />
-                                                <Border x:Name="SettingsIpAddressHost" Grid.Column="1" Height="50" Background="White"
+                                                <Border x:Name="SettingsIpAddressHost" Grid.Column="1" Height="50" Background="{DynamicResource Surface.Control}"
                                                         BorderBrush="{DynamicResource Stroke.Default}" BorderThickness="1" CornerRadius="14"
                                                         ToolTip="仅填写设备 IP，例如 192.168.1.100">
                                                     <Grid>
                                                         <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="1" /><ColumnDefinition /><ColumnDefinition Width="1" /><ColumnDefinition /><ColumnDefinition Width="1" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                                        <TextBlock x:Name="EndpointIpPart1Placeholder" Text="192" FontSize="17" Foreground="{DynamicResource SecondaryText}" Opacity="0.52" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=EndpointIpPart1}" Value=""><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
                                                         <TextBox x:Name="EndpointIpPart1" Tag="0" MaxLength="3" Height="48" Background="Transparent" BorderThickness="0" Text="{Binding Settings.EndpointPart1, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextAlignment="Center" VerticalContentAlignment="Center" Padding="6,0" FontSize="17" PreviewTextInput="EndpointIpPart_OnPreviewTextInput" TextChanged="EndpointIpPart_OnTextChanged" PreviewKeyDown="EndpointIpPart_OnPreviewKeyDown" DataObject.Pasting="EndpointIpPart_OnPasting" />
                                                         <Border Grid.Column="1" Width="1" Height="24" Background="{DynamicResource HairlineBrush}" VerticalAlignment="Center" />
+                                                        <TextBlock x:Name="EndpointIpPart2Placeholder" Grid.Column="2" Text="168" FontSize="17" Foreground="{DynamicResource SecondaryText}" Opacity="0.52" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=EndpointIpPart2}" Value=""><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
                                                         <TextBox x:Name="EndpointIpPart2" Grid.Column="2" Tag="1" MaxLength="3" Height="48" Background="Transparent" BorderThickness="0" Text="{Binding Settings.EndpointPart2, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextAlignment="Center" VerticalContentAlignment="Center" Padding="6,0" FontSize="17" PreviewTextInput="EndpointIpPart_OnPreviewTextInput" TextChanged="EndpointIpPart_OnTextChanged" PreviewKeyDown="EndpointIpPart_OnPreviewKeyDown" DataObject.Pasting="EndpointIpPart_OnPasting" />
                                                         <Border Grid.Column="3" Width="1" Height="24" Background="{DynamicResource HairlineBrush}" VerticalAlignment="Center" />
+                                                        <TextBlock x:Name="EndpointIpPart3Placeholder" Grid.Column="4" Text="1" FontSize="17" Foreground="{DynamicResource SecondaryText}" Opacity="0.52" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=EndpointIpPart3}" Value=""><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
                                                         <TextBox x:Name="EndpointIpPart3" Grid.Column="4" Tag="2" MaxLength="3" Height="48" Background="Transparent" BorderThickness="0" Text="{Binding Settings.EndpointPart3, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextAlignment="Center" VerticalContentAlignment="Center" Padding="6,0" FontSize="17" PreviewTextInput="EndpointIpPart_OnPreviewTextInput" TextChanged="EndpointIpPart_OnTextChanged" PreviewKeyDown="EndpointIpPart_OnPreviewKeyDown" DataObject.Pasting="EndpointIpPart_OnPasting" />
                                                         <Border Grid.Column="5" Width="1" Height="24" Background="{DynamicResource HairlineBrush}" VerticalAlignment="Center" />
+                                                        <TextBlock x:Name="EndpointIpPart4Placeholder" Grid.Column="6" Text="100" FontSize="17" Foreground="{DynamicResource SecondaryText}" Opacity="0.52" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=EndpointIpPart4}" Value=""><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
                                                         <TextBox x:Name="EndpointIpPart4" Grid.Column="6" Tag="3" MaxLength="3" Height="48" Background="Transparent" BorderThickness="0" Text="{Binding Settings.EndpointPart4, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextAlignment="Center" VerticalContentAlignment="Center" Padding="6,0" FontSize="17" PreviewTextInput="EndpointIpPart_OnPreviewTextInput" TextChanged="EndpointIpPart_OnTextChanged" PreviewKeyDown="EndpointIpPart_OnPreviewKeyDown" DataObject.Pasting="EndpointIpPart_OnPasting" />
                                                     </Grid>
                                                 </Border>
@@ -510,7 +564,7 @@
                                             <Grid>
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="92" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                                 <TextBlock Text="内容安全区" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                                <Border x:Name="SafeAreaInputHost" Grid.Column="1" Height="50" Background="White"
+                                                <Border x:Name="SafeAreaInputHost" Grid.Column="1" Height="50" Background="{DynamicResource Surface.Control}"
                                                         BorderBrush="{DynamicResource Stroke.Default}" BorderThickness="1" CornerRadius="14">
                                                     <Grid>
                                                         <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="1" /><ColumnDefinition /><ColumnDefinition Width="1" /><ColumnDefinition /><ColumnDefinition Width="1" /><ColumnDefinition /></Grid.ColumnDefinitions>
@@ -541,32 +595,83 @@
                                                 </Border>
                                             </Grid>
                                         </Border>
-                                        <Border Style="{StaticResource SectionCard}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="最小化到系统托盘" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" /><CheckBox x:Name="MinimizeToTrayCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Settings.MinimizeToTray, Mode=TwoWay}" /></Grid></Border>
-                                        <Border Style="{StaticResource SectionCard}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="关闭后最小化" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" /><CheckBox x:Name="CloseToTrayCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Settings.CloseToTray, Mode=TwoWay}" /></Grid></Border>
-                                        <Border Style="{StaticResource SectionCard}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="开机自启动" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" /><CheckBox x:Name="LaunchAtStartupCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Settings.LaunchAtStartup, Mode=TwoWay}" /></Grid></Border>
-                                        <Border Style="{StaticResource SectionCard}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="启动后保持最小化" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" /><CheckBox x:Name="StartMinimizedCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Settings.StartMinimized, Mode=TwoWay}" /></Grid></Border>
+                                        <Border x:Name="WindowBehaviorCard" Style="{StaticResource SectionCard}" Padding="0">
+                                            <Grid>
+                                                <Grid.RowDefinitions><RowDefinition Height="72" /><RowDefinition Height="1" /><RowDefinition Height="72" /></Grid.RowDefinitions>
+                                                <Grid Margin="20,0">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock Text="最小化到系统托盘" FontSize="15" FontWeight="SemiBold" />
+                                                        <TextBlock Text="最小化后在任务栏通知区域继续运行。" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
+                                                    </StackPanel>
+                                                    <CheckBox x:Name="MinimizeToTrayCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Settings.MinimizeToTray, Mode=TwoWay}" />
+                                                </Grid>
+                                                <Border Grid.Row="1" Height="1" Margin="20,0" Background="{DynamicResource HairlineBrush}" />
+                                                <Grid Grid.Row="2" Margin="20,0">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock Text="关闭后最小化" FontSize="15" FontWeight="SemiBold" />
+                                                        <TextBlock Text="点击关闭按钮后转入后台，不退出程序。" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
+                                                    </StackPanel>
+                                                    <CheckBox x:Name="CloseToTrayCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Settings.CloseToTray, Mode=TwoWay}" />
+                                                </Grid>
+                                            </Grid>
+                                        </Border>
+                                        <Border x:Name="StartupBehaviorCard" Style="{StaticResource SectionCard}" Padding="0">
+                                            <Grid>
+                                                <Grid.RowDefinitions><RowDefinition Height="72" /><RowDefinition Height="1" /><RowDefinition Height="72" /></Grid.RowDefinitions>
+                                                <Grid Margin="20,0">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock Text="开机自启动" FontSize="15" FontWeight="SemiBold" />
+                                                        <TextBlock Text="登录 Windows 后自动启动本程序。" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
+                                                    </StackPanel>
+                                                    <CheckBox x:Name="LaunchAtStartupCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Settings.LaunchAtStartup, Mode=TwoWay}" />
+                                                </Grid>
+                                                <Border Grid.Row="1" Height="1" Margin="20,0" Background="{DynamicResource HairlineBrush}" />
+                                                <Grid Grid.Row="2" Margin="20,0">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock Text="启动后保持最小化" FontSize="15" FontWeight="SemiBold" />
+                                                        <TextBlock Text="启动后仅显示托盘图标，不打断当前工作。" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
+                                                    </StackPanel>
+                                                    <CheckBox x:Name="StartMinimizedCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Settings.StartMinimized, Mode=TwoWay}" />
+                                                </Grid>
+                                            </Grid>
+                                        </Border>
                                     </StackPanel>
                                     <StackPanel x:Name="AboutPanel" Visibility="{Binding IsAboutPage, Converter={StaticResource BooleanToVisibilityConverter}}">
                                         <Border Style="{StaticResource SectionCard}">
                                             <StackPanel>
-                                                <TextBlock Text="关于" FontSize="22" FontWeight="SemiBold" />
-                                                <TextBlock Text="灵犀68屏幕驱动基于 Keyboard Screen Studio 修改，源代码采用 MIT License。第三方组件与数据服务仍遵循各自条款；应用图标与托盘图标采用单独的视觉资产许可。完整说明随程序提供。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,9,0,0" TextWrapping="Wrap" />
+                                                <TextBlock Text="灵犀68屏幕驱动" FontSize="18" FontWeight="SemiBold" />
+                                                <TextBlock Text="面向 Linx68 键盘屏幕的内容配置与预览工具。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0" />
+                                                <TextBlock Text="源代码基于 Keyboard Screen Studio 修改并采用 MIT License；第三方组件、数据服务和视觉资产遵循各自许可。" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,14,0,0" TextWrapping="Wrap" />
                                             </StackPanel>
                                         </Border>
                                         <Border Style="{StaticResource SectionCard}">
                                             <StackPanel>
                                                 <TextBlock Text="开源组件" FontSize="15" FontWeight="SemiBold" />
-                                                <Grid Margin="0,16,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="1.35*" /><ColumnDefinition Width="2.2*" /></Grid.ColumnDefinitions><TextBlock Text=".NET 8 自包含运行时" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text=".NET Library License" FontSize="12" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="2" Text="Copyright © Microsoft Corporation" FontSize="12" Foreground="{DynamicResource SecondaryText}" /></Grid>
-                                                <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,13" />
-                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="1.35*" /><ColumnDefinition Width="2.2*" /></Grid.ColumnDefinitions><TextBlock Text="Microsoft Edge WebView2 SDK" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="WebView2 SDK License" FontSize="12" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="2" Text="Copyright © Microsoft Corporation" FontSize="12" Foreground="{DynamicResource SecondaryText}" /></Grid>
-                                                <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,13" />
-                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="1.35*" /><ColumnDefinition Width="2.2*" /></Grid.ColumnDefinitions><TextBlock Text="Doto" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="SIL OFL 1.1" FontSize="12" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="2" Text="Copyright © 2024 The Doto Project Authors" FontSize="12" Foreground="{DynamicResource SecondaryText}" /></Grid>
+                                                <Grid Margin="0,15,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="1.5*" /><ColumnDefinition Width="2.15*" /></Grid.ColumnDefinitions><TextBlock Text="组件" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="1" Text="许可" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="2" Text="版权信息" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}" /></Grid>
+                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="1.5*" /><ColumnDefinition Width="2.15*" /></Grid.ColumnDefinitions><TextBlock Text=".NET 8 自包含运行时" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text=".NET Library License" FontSize="11" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="2" Text="Microsoft Corporation" FontSize="11" Foreground="{DynamicResource SecondaryText}" /></Grid>
+                                                <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,12" />
+                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="1.5*" /><ColumnDefinition Width="2.15*" /></Grid.ColumnDefinitions><TextBlock Text="Microsoft Edge WebView2 SDK" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="WebView2 SDK License" FontSize="11" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="2" Text="Microsoft Corporation" FontSize="11" Foreground="{DynamicResource SecondaryText}" /></Grid>
+                                                <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,12" />
+                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="1.5*" /><ColumnDefinition Width="2.15*" /></Grid.ColumnDefinitions><TextBlock Text="Doto" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="SIL OFL 1.1" FontSize="11" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="2" Text="2024 Doto Project Authors" FontSize="11" Foreground="{DynamicResource SecondaryText}" /></Grid>
                                             </StackPanel>
                                         </Border>
-                                        <Border Style="{StaticResource SectionCard}"><StackPanel><TextBlock Text="数据来源与声明" FontSize="15" FontWeight="SemiBold" /><TextBlock Text="天气数据由 Open-Meteo 提供（CC BY 4.0），自动定位城市名由 BigDataCloud 解析。本项目为非商业个人开源项目，使用 Open-Meteo 免费非商业接口；商业再使用者需自行取得适用许可。Yahoo Finance 行情与 Xiaomi MiMo 用量均为非官方实验性集成，可能延迟、不准确或失效，不构成投资建议。灵犀68屏幕驱动与 Linx68 品牌、设备制造商及上述平台不存在隶属、授权、认可或赞助关系。应用与托盘图标为 AI 辅助创作的原创视觉资产，版权归 ZCat95 所有，详见 ASSET_LICENSE.md。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,9,0,0" TextWrapping="Wrap" /></StackPanel></Border>
+                                        <Border Style="{StaticResource SectionCard}">
+                                            <StackPanel>
+                                                <TextBlock Text="数据来源与使用说明" FontSize="15" FontWeight="SemiBold" />
+                                                <Grid Margin="0,15,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="天气与定位" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="天气来自 Open-Meteo（CC BY 4.0），城市名由 BigDataCloud 解析。本项目使用免费非商业接口；商业再使用请自行取得适用许可。" FontSize="11" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" /></Grid>
+                                                <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,14" />
+                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="行情与 AI 用量" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="Yahoo Finance 行情与 Xiaomi MiMo 用量均为非官方实验性集成，可能延迟、不准确或失效，不构成投资建议。" FontSize="11" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" /></Grid>
+                                                <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,14" />
+                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="品牌与视觉资产" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="本应用与 Linx68 品牌、设备制造商及上述平台不存在隶属、授权、认可或赞助关系。应用与托盘图标为 AI 辅助创作的原创视觉资产，版权归 ZCat95 所有，详见 ASSET_LICENSE.md。" FontSize="11" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" /></Grid>
+                                            </StackPanel>
+                                        </Border>
                                         <StackPanel Margin="0,14,0,6" HorizontalAlignment="Center">
                                             <TextBlock Text="灵犀68屏幕驱动 1.0" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                                            <TextBlock Text="维护者 butang" FontSize="12" Foreground="{DynamicResource PrimaryText}" Margin="0,5,0,0" HorizontalAlignment="Center" />
+                                            <TextBlock Text="维护与适配：butang" FontSize="12" Foreground="{DynamicResource PrimaryText}" Margin="0,5,0,0" HorizontalAlignment="Center" />
                                             <TextBlock FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" HorizontalAlignment="Center"><Run Text="基于 " /><Hyperlink Click="ZCat95Link_OnClick" Foreground="{DynamicResource SecondaryText}" TextDecorations="Underline" Cursor="Hand">ZCat95 / Keyboard Screen Studio</Hyperlink><Run Text=" 修改" /></TextBlock>
                                         </StackPanel>
                                     </StackPanel>
@@ -576,10 +681,13 @@
                             <Border Grid.Column="2" Style="{StaticResource PreviewCard}" Padding="20">
                                 <Grid>
                                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="预览" FontSize="16" FontWeight="SemiBold" />
-                                        
-                                    </StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <TextBlock Text="预览" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <Border x:Name="PreviewStatusBadge" Grid.Column="1" Style="{StaticResource InlineSurface}" Padding="8,4" ToolTip="设备离线时，预览仍在本机实时更新">
+                                            <TextBlock x:Name="PreviewStatusText" Text="本地预览" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}" />
+                                        </Border>
+                                    </Grid>
                                     <local:DevicePreviewControl x:Name="DevicePreview" Grid.Row="1" VerticalAlignment="Center" />
                                 </Grid>
                             </Border>

@@ -47,7 +47,9 @@ public partial class App : System.Windows.Application
         builder.Services.AddSingleton<ISettingsStore>(settingsStore);
         builder.Services.AddSingleton<ISystemSnapshotSource, WindowsSystemSnapshotSource>();
         builder.Services.AddSingleton<IMusicSnapshotSource, WindowsMusicSnapshotSource>();
-        builder.Services.AddSingleton<ILyricsSnapshotSource, LrcLibLyricsSnapshotSource>();
+        builder.Services.AddSingleton<LrcLibLyricsSnapshotSource>();
+        builder.Services.AddSingleton<ILyricsSnapshotSource, NetEaseLyricsSnapshotSource>();
+        builder.Services.AddSingleton<IMusicSnapshotEnricher, NetEaseMusicSnapshotEnricher>();
         builder.Services.AddSingleton<IWeatherSnapshotSource, OpenMeteoWeatherSnapshotSource>();
         builder.Services.AddSingleton<IStockSnapshotSource, YahooStockSnapshotSource>();
         builder.Services.AddSingleton<IDeviceTransport, HttpImageDeviceTransport>();

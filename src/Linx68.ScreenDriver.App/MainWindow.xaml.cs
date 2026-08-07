@@ -14,7 +14,6 @@ using System.Windows.Controls;
 using System.Windows.Forms;
 using System.Windows.Markup;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Resources;
 using System.Windows.Shapes;
@@ -83,11 +82,17 @@ public partial class MainWindow : Window
 
 	private MiMoTokenPlanWindow? _miMoWindow;
 
+	private readonly CodexSetupService _codexSetupService = new();
+
 	private AiQuotaSnapshot? _latestAiQuota;
 
 	private SystemSnapshot? _latestSnapshot;
 
 	private bool _busy;
+
+	private bool _pushing;
+
+	private DateTimeOffset _nextDevicePushAt = DateTimeOffset.MinValue;
 
 	private bool _loaded;
 
@@ -310,164 +315,12 @@ public partial class MainWindow : Window
 		};
 	}
 
-	private void BuildThemeList()
-	{
-		bool previousSuppression = _suppressThemeRefresh;
-		_suppressThemeRefresh = true;
-		try
-		{
-			_screenViewModel.SetThemes(
-				_themeDefinitions.Select(CreateThemeCard),
-				_settings.SelectedThemeId);
-			_screenViewModel.SelectTheme(_settings.SelectedThemeId, notify: true);
-		}
-		finally
-		{
-			_suppressThemeRefresh = previousSuppression;
-		}
-		_screenViewModel.UpdateCardWidth(ThemeGroupPanel.ActualWidth);
-	}
-
-	private ThemeCardViewModel CreateThemeCard(ThemeDefinition definition)
-	{
-		ImageSource? preview = null;
-		try
-		{
-			RenderedFrame frame = _renderer.Render(
-				definition.Theme,
-				SystemSnapshot.DesignSample,
-				86,
-				GetAccentColor(),
-				GetSelectedFontFamily(),
-				GetScreenDisplayOptions());
-			preview = LoadBitmap(frame.JpegBytes);
-		}
-		catch
-		{
-			// A failed gallery preview must not prevent the remaining themes from loading.
-		}
-
-		return new ThemeCardViewModel(definition, preview);
-	}
-
-	private void PopulateMediaAutomationThemeSelectors()
-	{
-		_updatingAutomation = true;
-		try
-		{
-			_automationViewModel.Load(_settings, _themeDefinitions);
-		}
-		finally
-		{
-			_updatingAutomation = false;
-		}
-	}
-	private NotifyIcon CreateTrayIcon()
-	{
-		ContextMenuStrip contextMenuStrip = new ContextMenuStrip();
-		contextMenuStrip.Items.Add("打开 灵犀68屏幕驱动", null, delegate
-		{
-			Dispatcher.BeginInvoke(RestoreFromTray);
-		});
-		contextMenuStrip.Items.Add("刷新并推送", null, delegate
-		{
-			Dispatcher.BeginInvoke(async () =>
-			{
-				await CommitAndPushAsync();
-			});
-		});
-		contextMenuStrip.Items.Add(new ToolStripSeparator());
-		contextMenuStrip.Items.Add("退出", null, delegate
-		{
-			Dispatcher.BeginInvoke(ExitApplication);
-		});
-		NotifyIcon notifyIcon = new NotifyIcon();
-		notifyIcon.Text = "灵犀68屏幕驱动";
-		notifyIcon.Icon = LoadTrayIcon(IsWindowsSystemDarkMode());
-		notifyIcon.ContextMenuStrip = contextMenuStrip;
-		notifyIcon.Visible = false;
-		notifyIcon.DoubleClick += delegate
-		{
-			Dispatcher.BeginInvoke(RestoreFromTray);
-		};
-		return notifyIcon;
-	}
-
-	private void SystemEvents_OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
-	{
-		if (e.Category != UserPreferenceCategory.Color &&
-			e.Category != UserPreferenceCategory.General &&
-			e.Category != UserPreferenceCategory.VisualStyle)
-		{
-			return;
-		}
-
-		Dispatcher.BeginInvoke((Action)(() =>
-		{
-			UpdateTrayIconForSystemTheme();
-			if (_settings.AppearanceMode == AppearanceMode.System)
-			{
-				ApplyAppearance();
-			}
-		}));
-	}
-
-	private void UpdateTrayIconForSystemTheme()
-	{
-		Icon nextIcon = LoadTrayIcon(IsWindowsSystemDarkMode());
-		Icon? previousIcon = _trayIcon.Icon;
-		_trayIcon.Icon = nextIcon;
-		previousIcon?.Dispose();
-	}
-
-	private static bool IsWindowsSystemDarkMode() => AppearanceManager.IsSystemDarkMode();
-
-	private static Icon LoadTrayIcon(bool useWhiteIcon)
-	{
-		string iconName = useWhiteIcon ? "TrayIcon.White.ico" : "TrayIcon.ico";
-		StreamResourceInfo resourceStream = System.Windows.Application.GetResourceStream(
-			new Uri($"pack://application:,,,/Linx68.ScreenDriver.App;component/Assets/{iconName}", UriKind.Absolute));
-		if (resourceStream == null)
-		{
-			return (Icon)SystemIcons.Application.Clone();
-		}
-		using (resourceStream.Stream)
-		{
-			using Icon icon = new Icon(resourceStream.Stream);
-			return (Icon)icon.Clone();
-		}
-	}
-
-	private void ApplyWindowBackdrop()
-	{
-		if (WindowBackdrop.TryApplyMica(this, AppearanceManager.IsDark))
-		{
-			WindowRoot.Background = System.Windows.Media.Brushes.Transparent;
-			WindowRoot.BorderBrush = System.Windows.Media.Brushes.Transparent;
-		}
-		else
-		{
-			WindowRoot.Background = (System.Windows.Media.Brush)FindResource("AppBackground");
-			WindowRoot.BorderBrush = (System.Windows.Media.Brush)FindResource("Stroke.Default");
-		}
-	}
-
-	private void ApplyAppearance()
-	{
-		AppearanceManager.Apply(_settings.AppearanceMode);
-		ApplyWindowBackdrop();
-		DevicePreview?.InvalidateVisual();
-		if (_themeDefinitions.Count > 0 && ThemeGroupPanel is not null)
-		{
-			BuildThemeList();
-		}
-	}
-
 	private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
 	{
 		_settings = _initialSettings ?? await _settingsStore.LoadAsync();
 		ApplyAppearance();
 		ApplySettingsToControls();
+		_ = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, UpdateThemeGalleryCardWidth);
 		if (!_settings.HasCompletedOnboarding)
 		{
 			var guide = new FirstRunGuideWindow(DeviceEndpoint.ExtractIp(_settings.DeviceEndpoint))
@@ -495,8 +348,10 @@ public partial class MainWindow : Window
 		}
 		else
 		{
+			RestoreFromTray();
 			InteractionMotion.Reveal(WindowRoot, 10.0, 0.994);
 		}
+		await RefreshPreviewAsync();
 	}
 
 	private void ApplySettingsToControls()
@@ -525,7 +380,12 @@ public partial class MainWindow : Window
 		{
 			AiQuotaSettings aiQuotaSettings = (settings.AiQuota = new AiQuotaSettings());
 		}
-		AiDisplayNameTextBox.Text = (string.IsNullOrWhiteSpace(_settings.AiQuota.DisplayName) ? "MiMo" : _settings.AiQuota.DisplayName);
+		AiQuotaSourceKind aiSourceKind = _settings.AiQuota.SourceKind;
+		SelectComboByTag(AiSourceComboBox, aiSourceKind == AiQuotaSourceKind.OpenAICodex ? "Codex" : "MiMo");
+		AiDisplayNameTextBox.Text = string.IsNullOrWhiteSpace(_settings.AiQuota.DisplayName)
+			? GetDefaultAiDisplayName(aiSourceKind)
+			: _settings.AiQuota.DisplayName;
+		UpdateAiSourceUi();
 		_settings.Weather ??= new WeatherSettings();
 		WeatherAutomaticLocationCheckBox.IsChecked = _settings.Weather.UseAutomaticLocation;
 		WeatherLocationTextBox.Text = string.IsNullOrWhiteSpace(_settings.Weather.LocationQuery) ? "北京" : _settings.Weather.LocationQuery;
@@ -559,6 +419,7 @@ public partial class MainWindow : Window
 		_settings.SelectedThemeId = GetSelectedTheme()?.Id ?? "system";
 		_settings.AiQuota = new AiQuotaSettings
 		{
+			SourceKind = ReadAiSourceKind(),
 			DisplayName = ReadAiDisplayName()
 		};
 		_settings.Weather = new WeatherSettings
@@ -662,7 +523,7 @@ public partial class MainWindow : Window
 				BuildThemeList();
 			}
 			_mediaAutomationThemeChanged = false;
-			await PushLatestAsync();
+			await PushLatestAsync(force: true);
 		}
 		catch (Exception ex)
 		{
@@ -721,7 +582,8 @@ public partial class MainWindow : Window
 				? (musicSnapshot.Lyrics.Available ? " · 歌词已匹配" : " · 暂无同步歌词")
 				: string.Empty;
 			string musicSource = ResolveMusicSourceName(musicSnapshot.SourceAppId);
-			MusicSourceText.Text = (musicSnapshot.Available ? $"{musicSource} · {(musicSnapshot.IsPlaying ? "正在播放" : "已暂停")} · {musicSnapshot.Title}  —  {musicSnapshot.Artist}{lyricStatus}" : "当前没有可用的 Windows 媒体会话");
+			string album = string.IsNullOrWhiteSpace(musicSnapshot.AlbumTitle) ? string.Empty : $" · 专辑：{musicSnapshot.AlbumTitle}";
+			MusicSourceText.Text = (musicSnapshot.Available ? $"{musicSource} · {(musicSnapshot.IsPlaying ? "正在播放" : "已暂停")} · {musicSnapshot.Title}  —  {musicSnapshot.Artist}{album}{lyricStatus}" : "当前没有可用的 Windows 媒体会话");
 			if (weather is { Available: true })
 			{
 				WeatherSourceStatusText.Text = $"{(_automaticLocationFallback ? "自动定位不可用，已使用 " : string.Empty)}{weather.LocationName} · {weather.TemperatureC:0}° · {weather.ConditionText}{(weather.IsStale ? " · 上次数据" : string.Empty)}";
@@ -751,6 +613,13 @@ public partial class MainWindow : Window
 
 	private async Task<AiQuotaSnapshot?> ReadAiQuotaAsync(CancellationToken cancellationToken = default)
 	{
+		if (ReadAiSourceKind() == AiQuotaSourceKind.OpenAICodex)
+		{
+			return _latestAiQuota is null
+				? AiQuotaSnapshot.Unavailable(ReadAiDisplayName())
+				: ApplyAiDisplayName(_latestAiQuota);
+		}
+
 		if (_miMoWindow == null)
 		{
 			AiSourceStatusText.Text = "请先登录小米控制台";
@@ -820,7 +689,52 @@ public partial class MainWindow : Window
 		{
 			return AiDisplayNameTextBox.Text.Trim();
 		}
-		return "MiMo";
+		return GetDefaultAiDisplayName(ReadAiSourceKind());
+	}
+
+	private AiQuotaSourceKind ReadAiSourceKind() =>
+		ReadComboTag(AiSourceComboBox, "MiMo") == "Codex"
+			? AiQuotaSourceKind.OpenAICodex
+			: AiQuotaSourceKind.XiaomiMiMoTokenPlanChina;
+
+	private static string GetDefaultAiDisplayName(AiQuotaSourceKind sourceKind) =>
+		sourceKind == AiQuotaSourceKind.OpenAICodex ? "Codex" : "MiMo";
+
+	private void AiSourceComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+	{
+		if (_updatingSettingsPage)
+		{
+			return;
+		}
+
+		AiQuotaSourceKind sourceKind = ReadAiSourceKind();
+		if (string.IsNullOrWhiteSpace(AiDisplayNameTextBox.Text) ||
+			AiDisplayNameTextBox.Text.Trim() is "MiMo" or "Codex")
+		{
+			AiDisplayNameTextBox.Text = GetDefaultAiDisplayName(sourceKind);
+		}
+		_latestAiQuota = null;
+		ResetAiQuotaDisplay();
+		UpdateAiSourceUi();
+		ScheduleAutoCommit();
+	}
+
+	private void UpdateAiSourceUi()
+	{
+		bool isCodex = ReadAiSourceKind() == AiQuotaSourceKind.OpenAICodex;
+		MiMoActionsPanel.Visibility = isCodex ? Visibility.Collapsed : Visibility.Visible;
+		CodexActionsPanel.Visibility = isCodex ? Visibility.Visible : Visibility.Collapsed;
+		AiSourceDescriptionText.Text = isCodex
+			? "Codex 使用本机登录。可迁移 config.toml 偏好；每台电脑都必须单独登录，绝不会导出 auth.json 或系统凭据。当前额度请在 Codex 会话中使用 /status 查看。"
+			: "China · 读取订阅套餐的真实 Credits，用量信息仅保存在本机。";
+	}
+
+	private void ResetAiQuotaDisplay()
+	{
+		MiMoRemainingValueText.Text = "—";
+		MiMoCreditsValueText.Text = "—";
+		MiMoExpiryValueText.Text = "—";
+		MiMoRemainingProgress.Value = 0;
 	}
 
 	private string ReadWeatherLocation()
@@ -883,9 +797,9 @@ public partial class MainWindow : Window
 		}
 	}
 
-	private async Task PushLatestAsync()
+	private async Task PushLatestAsync(bool force = false)
 	{
-		if (_busy)
+		if (_pushing || (!force && DateTimeOffset.UtcNow < _nextDevicePushAt))
 		{
 			return;
 		}
@@ -898,14 +812,24 @@ public partial class MainWindow : Window
 			SetDeviceStatus(success: false);
 			return;
 		}
-		_busy = true;
+		_pushing = true;
 		try
 		{
-			SetDeviceStatus((await _pushService.PushAsync(_settingsViewModel.EndpointIp, _latestFrame)).Success);
+			bool success = (await _pushService.PushAsync(_settingsViewModel.EndpointIp, _latestFrame)).Success;
+			SetDeviceStatus(success);
+			_nextDevicePushAt = success
+				? DateTimeOffset.MinValue
+				: DateTimeOffset.UtcNow.AddSeconds(5);
+		}
+		catch (Exception ex)
+		{
+			Trace.TraceWarning($"Failed to push display frame: {ex}");
+			SetDeviceStatus(success: false);
+			_nextDevicePushAt = DateTimeOffset.UtcNow.AddSeconds(5);
 		}
 		finally
 		{
-			_busy = false;
+			_pushing = false;
 		}
 	}
 
@@ -915,172 +839,108 @@ public partial class MainWindow : Window
 		return GetSelectedThemeDefinition()?.Theme;
 	}
 
-	private ThemeDefinition? GetSelectedThemeDefinition()
+	private void CodexInstallButton_OnClick(object sender, RoutedEventArgs e)
 	{
-		return GetThemeDefinition(_settings.SelectedThemeId);
+		try
+		{
+			_codexSetupService.StartInstaller();
+			AiSourceStatusText.Text = "已打开官方安装窗口，完成后点击“检查状态”";
+		}
+		catch (Exception ex)
+		{
+			AiSourceStatusText.Text = "无法启动 Codex 安装：" + ex.Message;
+		}
 	}
 
-	private ThemeDefinition? GetThemeDefinition(string? id)
+	private void CodexLoginButton_OnClick(object sender, RoutedEventArgs e)
 	{
-		return _themeDefinitions.FirstOrDefault(definition =>
-			string.Equals(definition.Id, id, StringComparison.OrdinalIgnoreCase));
+		try
+		{
+			_codexSetupService.StartLogin();
+			AiSourceStatusText.Text = "已打开 Codex 登录窗口，完成授权后点击“检查状态”";
+		}
+		catch (Exception ex)
+		{
+			AiSourceStatusText.Text = "无法启动 Codex 登录：" + ex.Message;
+		}
 	}
 
-	private void SelectTheme(string id)
+	private async void CodexStatusButton_OnClick(object sender, RoutedEventArgs e)
 	{
-		if (_themeDefinitions.Count == 0)
+		AiSourceStatusText.Text = "正在检查 Codex 状态…";
+		CodexCliStatus status = await _codexSetupService.GetStatusAsync();
+		AiSourceStatusText.Text = status.Message;
+		AiSourceStatusText.Foreground = status.IsSignedIn
+			? (System.Windows.Media.Brush)FindResource("SecondaryText")
+			: new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 74, 84));
+		_latestAiQuota = AiQuotaSnapshot.Unavailable(ReadAiDisplayName());
+		await RefreshPreviewAsync();
+	}
+
+	private void CodexOpenConfigButton_OnClick(object sender, RoutedEventArgs e)
+	{
+		try
+		{
+			_codexSetupService.OpenConfig();
+			AiSourceStatusText.Text = "已打开本机 Codex 配置";
+		}
+		catch (Exception ex)
+		{
+			AiSourceStatusText.Text = "无法打开 Codex 配置：" + ex.Message;
+		}
+	}
+
+	private void CodexExportConfigButton_OnClick(object sender, RoutedEventArgs e)
+	{
+		var dialog = new Microsoft.Win32.SaveFileDialog
+		{
+			Title = "导出可迁移的 Codex 配置",
+			Filter = "Codex 配置 (*.toml)|*.toml",
+			FileName = "codex-config.toml",
+			AddExtension = true
+		};
+		if (dialog.ShowDialog(this) != true)
 		{
 			return;
 		}
 
-		_settings.SelectedThemeId = GetThemeDefinition(id)?.Id ?? _themeDefinitions[0].Id;
-		_screenViewModel.SelectTheme(_settings.SelectedThemeId, notify: true);
-	}
-
-	private void ThemeGroupPanel_OnSizeChanged(object sender, SizeChangedEventArgs e) =>
-		_screenViewModel.UpdateCardWidth(e.NewSize.Width);
-
-	private void LocateCurrent_OnClick(object sender, RoutedEventArgs e)
-	{
-		Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+		try
 		{
-			if (_screenViewModel.SelectedTheme is { } selectedTheme)
-			{
-				FindElementByDataContext(ThemeGroupPanel, selectedTheme)?.BringIntoView();
-			}
-		});
-	}
-
-	private static FrameworkElement? FindElementByDataContext(DependencyObject root, object dataContext)
-	{
-		if (root is FrameworkElement element && ReferenceEquals(element.DataContext, dataContext))
-		{
-			return element;
+			_codexSetupService.ExportConfig(dialog.FileName);
+			AiSourceStatusText.Text = "已导出 config.toml；新电脑导入后仍需单独登录";
 		}
-
-		for (int index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+		catch (Exception ex)
 		{
-			FrameworkElement? descendant = FindElementByDataContext(
-				VisualTreeHelper.GetChild(root, index),
-				dataContext);
-			if (descendant is not null)
-			{
-				return descendant;
-			}
+			AiSourceStatusText.Text = "导出配置失败：" + ex.Message;
 		}
-
-		return null;
 	}
 
-	private void AppearanceViewModel_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+	private void CodexImportConfigButton_OnClick(object sender, RoutedEventArgs e)
 	{
-		if (_updatingAppearance)
+		var dialog = new Microsoft.Win32.OpenFileDialog
+		{
+			Title = "导入 Codex 配置",
+			Filter = "Codex 配置 (*.toml)|*.toml",
+			CheckFileExists = true,
+			Multiselect = false
+		};
+		if (dialog.ShowDialog(this) != true ||
+			System.Windows.MessageBox.Show(this, "将覆盖本机 config.toml，并自动保留备份。登录信息不会导入。是否继续？", "导入 Codex 配置", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
 		{
 			return;
 		}
 
-		switch (e.PropertyName)
+		try
 		{
-			case nameof(AppearanceViewModel.AppearanceMode):
-				_settings.AppearanceMode = _appearanceViewModel.AppearanceMode;
-				ApplyAppearance();
-				ScheduleAutoCommit();
-				break;
-			case nameof(AppearanceViewModel.AccentColor):
-				if (_appearanceViewModel.IsAccentColorValid)
-				{
-					_settings.AccentColor = _appearanceViewModel.AccentColor.Trim().ToUpperInvariant();
-					_themeGalleryPreviewDirty = true;
-					ScheduleAutoCommit();
-				}
-				break;
-			case nameof(AppearanceViewModel.SelectedFontOption):
-				if (_appearanceViewModel.SelectedFontOption is not null)
-				{
-					_settings.SelectedFontId = _appearanceViewModel.SelectedFontOption.Id;
-					_themeGalleryPreviewDirty = true;
-					if (_loaded)
-					{
-						_ = CommitAndPushAsync();
-					}
-				}
-				break;
-			case nameof(AppearanceViewModel.SelectedImageTimePlacement):
-				if (_appearanceViewModel.SelectedImageTimePlacement is not null)
-				{
-					_settings.ImageTimePlacement = _appearanceViewModel.SelectedImageTimePlacement.Value;
-					ScheduleAutoCommit();
-				}
-				break;
+			string backupPath = _codexSetupService.ImportConfig(dialog.FileName);
+			AiSourceStatusText.Text = string.IsNullOrEmpty(backupPath)
+				? "配置已导入；请在本机单独登录 Codex"
+				: "配置已导入，原配置已备份；请在本机单独登录 Codex";
 		}
-	}
-
-	private void AutomationViewModel_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
-	{
-		if (_updatingAutomation)
+		catch (Exception ex)
 		{
-			return;
+			AiSourceStatusText.Text = "导入配置失败：" + ex.Message;
 		}
-
-		switch (e.PropertyName)
-		{
-			case nameof(AutomationViewModel.AutoPush):
-				_settings.AutoPush = _automationViewModel.AutoPush;
-				break;
-			case nameof(AutomationViewModel.RefreshSeconds):
-				_settings.RefreshSeconds = _automationViewModel.RefreshSeconds;
-				_timer.Interval = TimeSpan.FromSeconds(_settings.RefreshSeconds);
-				break;
-			case nameof(AutomationViewModel.AutoSwitchToMusic):
-				_settings.AutoSwitchToMusic = _automationViewModel.AutoSwitchToMusic;
-				break;
-			case nameof(AutomationViewModel.AutoMediaThemeSwitch):
-				_settings.AutoMediaThemeSwitch = _automationViewModel.AutoMediaThemeSwitch;
-				break;
-			case nameof(AutomationViewModel.SelectedIdleTheme):
-				_settings.MediaIdleThemeId = _automationViewModel.SelectedIdleTheme?.Id ?? "system";
-				break;
-			case nameof(AutomationViewModel.SelectedPlayingTheme):
-				_settings.MediaPlayingThemeId = _automationViewModel.SelectedPlayingTheme?.Id ?? "music";
-				break;
-			default:
-				return;
-		}
-
-		ScheduleAutoCommit();
-	}
-
-	private void SettingsViewModel_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
-	{
-		if (_updatingSettingsPage)
-		{
-			return;
-		}
-
-		if (e.PropertyName == nameof(SettingsViewModel.EndpointIp))
-		{
-			UpdateEndpointSummary();
-			ScheduleAutoCommit();
-			return;
-		}
-
-		if (e.PropertyName is nameof(SettingsViewModel.SafeLeft)
-			or nameof(SettingsViewModel.SafeTop)
-			or nameof(SettingsViewModel.SafeRight)
-			or nameof(SettingsViewModel.SafeBottom)
-			or nameof(SettingsViewModel.MinimizeToTray)
-			or nameof(SettingsViewModel.CloseToTray)
-			or nameof(SettingsViewModel.StartMinimized)
-			or nameof(SettingsViewModel.LaunchAtStartup))
-		{
-			ScheduleAutoCommit();
-		}
-	}
-
-	private void UpdateEndpointSummary()
-	{
-		string ipString = _settingsViewModel.EndpointIp;
-		EndpointSummaryText.Text = ((IPAddress.TryParse(ipString, out IPAddress? address) && address.AddressFamily == AddressFamily.InterNetwork) ? address.ToString() : "地址未配置");
 	}
 
 	private void ScreenViewModel_OnThemeSelected(ThemeDefinition definition)
@@ -1121,6 +981,10 @@ public partial class MainWindow : Window
 		{
 			notice = FeatureNoticeWindow.CreateStockNotice();
 		}
+		else if (themeId == "ai-quota" && ReadAiSourceKind() == AiQuotaSourceKind.OpenAICodex && !_settings.HasAcknowledgedCodexNotice)
+		{
+			notice = FeatureNoticeWindow.CreateCodexNotice();
+		}
 		else if (themeId == "ai-quota" && !_settings.HasAcknowledgedMiMoNotice)
 		{
 			notice = FeatureNoticeWindow.CreateMiMoNotice();
@@ -1136,6 +1000,10 @@ public partial class MainWindow : Window
 		if (themeId == "stocks")
 		{
 			_settings.HasAcknowledgedStockNotice = true;
+		}
+		else if (ReadAiSourceKind() == AiQuotaSourceKind.OpenAICodex)
+		{
+			_settings.HasAcknowledgedCodexNotice = true;
 		}
 		else
 		{
@@ -1182,6 +1050,7 @@ public partial class MainWindow : Window
 		}
 
 		viewModel.NavigateCommand.Execute(page);
+		Dispatcher.BeginInvoke(DispatcherPriority.Loaded, ThemeScrollViewer.ScrollToTop);
 		if (_loaded)
 		{
 			FrameworkElement frameworkElement = viewModel.CurrentPage switch
@@ -1225,7 +1094,7 @@ public partial class MainWindow : Window
 
 	private async void TestConnectionButton_OnClick(object sender, RoutedEventArgs e)
 	{
-		await PushLatestAsync();
+		await PushLatestAsync(force: true);
 	}
 
 	private void SettingsNavButton_OnClick(object sender, RoutedEventArgs e)
@@ -1346,115 +1215,6 @@ public partial class MainWindow : Window
 		return color;
 	}
 
-	private void ThemeOptionComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
-	{
-		ScheduleAutoCommit();
-	}
-
-	private void SettingToggle_OnChanged(object sender, RoutedEventArgs e)
-	{
-		ScheduleAutoCommit();
-	}
-
-	private void WeatherAutomaticLocationCheckBox_OnChanged(object sender, RoutedEventArgs e)
-	{
-		if (WeatherLocationTextBox is not null)
-		{
-			WeatherLocationTextBox.IsEnabled = WeatherAutomaticLocationCheckBox.IsChecked != true;
-		}
-		ScheduleAutoCommit();
-	}
-
-	private void SettingTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
-	{
-		ScheduleAutoCommit();
-	}
-
-	private void EndpointIpPart_OnPreviewTextInput(object sender, System.Windows.Input.TextCompositionEventArgs e)
-	{
-		e.Handled = !e.Text.All(char.IsDigit);
-	}
-
-	private void EndpointIpPart_OnTextChanged(object sender, TextChangedEventArgs e)
-	{
-		if (sender is not System.Windows.Controls.TextBox textBox)
-		{
-			return;
-		}
-
-		if (textBox.Text.Length == 3 && int.TryParse(textBox.Text, out int value) && value <= 255)
-		{
-			int index = Array.IndexOf(_endpointParts, textBox);
-			if (index >= 0 && index < _endpointParts.Length - 1)
-			{
-				_endpointParts[index + 1].Focus();
-				_endpointParts[index + 1].SelectAll();
-			}
-		}
-	}
-
-	private void EndpointIpPart_OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-	{
-		if (sender is not System.Windows.Controls.TextBox textBox)
-		{
-			return;
-		}
-
-		int index = Array.IndexOf(_endpointParts, textBox);
-		if (e.Key == System.Windows.Input.Key.Back && textBox.Text.Length == 0 && index > 0)
-		{
-			_endpointParts[index - 1].Focus();
-			_endpointParts[index - 1].CaretIndex = _endpointParts[index - 1].Text.Length;
-			e.Handled = true;
-		}
-		else if ((e.Key == System.Windows.Input.Key.OemPeriod || e.Key == System.Windows.Input.Key.Decimal) &&
-			index >= 0 && index < _endpointParts.Length - 1)
-		{
-			_endpointParts[index + 1].Focus();
-			_endpointParts[index + 1].SelectAll();
-			e.Handled = true;
-		}
-	}
-
-	private void EndpointIpPart_OnPasting(object sender, System.Windows.DataObjectPastingEventArgs e)
-	{
-		if (!e.SourceDataObject.GetDataPresent(System.Windows.DataFormats.UnicodeText))
-		{
-			e.CancelCommand();
-			return;
-		}
-
-		string pasted = (e.SourceDataObject.GetData(System.Windows.DataFormats.UnicodeText) as string ?? string.Empty).Trim();
-		if (TryPopulateEndpointParts(pasted))
-		{
-			e.CancelCommand();
-			EndpointIpPart4.Focus();
-			EndpointIpPart4.CaretIndex = EndpointIpPart4.Text.Length;
-			return;
-		}
-
-		if (pasted.Length is < 1 or > 3 || !pasted.All(char.IsDigit))
-		{
-			e.CancelCommand();
-		}
-	}
-
-	private void PopulateEndpointParts(string? value)
-	{
-		_ = _settingsViewModel.SetEndpoint(value);
-		UpdateEndpointSummary();
-	}
-
-	private bool TryPopulateEndpointParts(string? value)
-	{
-		bool isValid = _settingsViewModel.SetEndpoint(value);
-		if (isValid)
-		{
-			UpdateEndpointSummary();
-		}
-		return isValid;
-	}
-
 	private static string ReadComboTag(System.Windows.Controls.ComboBox comboBox, string fallback)
 	{
 		return (comboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? fallback;
@@ -1471,126 +1231,6 @@ public partial class MainWindow : Window
 			return fallback;
 		}
 		return result;
-	}
-
-	private async void MinimizeButton_OnClick(object sender, RoutedEventArgs e)
-	{
-		if (_windowTransitionRunning)
-		{
-			return;
-		}
-		_windowTransitionRunning = true;
-		try
-		{
-			await InteractionMotion.HideAsync(WindowRoot, 4.0);
-			if (_settingsViewModel.MinimizeToTray)
-			{
-				HideToTray();
-				return;
-			}
-			_revealAfterMinimize = true;
-			base.WindowState = WindowState.Minimized;
-		}
-		finally
-		{
-			InteractionMotion.Reset(WindowRoot);
-			_windowTransitionRunning = false;
-		}
-	}
-
-	private void MaximizeButton_OnClick(object sender, RoutedEventArgs e)
-	{
-		base.WindowState = ((base.WindowState != WindowState.Maximized) ? WindowState.Maximized : WindowState.Normal);
-	}
-
-	private async void CloseButton_OnClick(object sender, RoutedEventArgs e)
-	{
-		if (_windowTransitionRunning)
-		{
-			return;
-		}
-		_windowTransitionRunning = true;
-		try
-		{
-			await InteractionMotion.HideAsync(WindowRoot, 4.0);
-			Close();
-		}
-		finally
-		{
-			InteractionMotion.Reset(WindowRoot);
-			_windowTransitionRunning = false;
-		}
-	}
-
-	private void MainWindow_OnStateChanged(object? sender, EventArgs e)
-	{
-		if (base.WindowState != WindowState.Minimized)
-		{
-			_restoreWindowState = base.WindowState;
-			if (_revealAfterMinimize)
-			{
-				_revealAfterMinimize = false;
-				InteractionMotion.Reveal(WindowRoot, 8.0, 0.994);
-			}
-		}
-	}
-
-	private void MainWindow_OnClosing(object? sender, CancelEventArgs e)
-	{
-		if (!_explicitExit && _loaded && _settingsViewModel.CloseToTray)
-		{
-			e.Cancel = true;
-			HideToTray();
-		}
-	}
-
-	private void HideToTray()
-	{
-		WindowState windowState = base.WindowState;
-		if (windowState == WindowState.Normal || windowState == WindowState.Maximized)
-		{
-			_restoreWindowState = base.WindowState;
-		}
-		_trayIcon.Visible = true;
-		base.ShowInTaskbar = false;
-		Hide();
-	}
-
-	private void RestoreFromTray()
-	{
-		base.ShowInTaskbar = true;
-		Show();
-		base.WindowState = ((_restoreWindowState != WindowState.Minimized) ? _restoreWindowState : WindowState.Normal);
-		Activate();
-		base.Topmost = true;
-		base.Topmost = false;
-		Focus();
-		InteractionMotion.Reveal(WindowRoot, 8.0, 0.994);
-	}
-
-	private void ExitApplication()
-	{
-		_explicitExit = true;
-		_trayIcon.Visible = false;
-		Close();
-	}
-
-	internal void RestoreFromExternalActivation()
-	{
-		RestoreFromTray();
-	}
-
-	private void Application_OnSessionEnding(object sender, SessionEndingCancelEventArgs e)
-	{
-		_explicitExit = true;
-	}
-
-	private void UpdateTrayVisibility()
-	{
-		if (_loaded)
-		{
-			_trayIcon.Visible = !base.IsVisible || _settings.MinimizeToTray || _settings.CloseToTray;
-		}
 	}
 
 	private static BitmapImage LoadBitmap(byte[] bytes)
@@ -1615,42 +1255,6 @@ public partial class MainWindow : Window
 		if (sourceAppId.Contains("chrome", StringComparison.OrdinalIgnoreCase)) return "Chrome";
 		if (sourceAppId.Contains("msedge", StringComparison.OrdinalIgnoreCase)) return "Edge";
 		return "Windows 媒体";
-	}
-
-	private void SetDeviceStatus(bool success)
-	{
-		DeviceStatusText.Text = success ? "设备在线" : "设备离线";
-		System.Windows.Media.Brush brush = success
-			? (System.Windows.Media.Brush)FindResource("SuccessBrush")
-			: (System.Windows.Media.Brush)FindResource("DangerBrush");
-		SetDeviceStatusVisual(brush, pulse: !success);
-	}
-
-	private void SetOperationFailure(string message)
-	{
-		DeviceStatusText.Text = message;
-		System.Windows.Media.Brush brush = (System.Windows.Media.Brush)FindResource("DangerBrush");
-		SetDeviceStatusVisual(brush, pulse: false);
-	}
-
-	private void SetDeviceStatusVisual(System.Windows.Media.Brush brush, bool pulse)
-	{
-		DeviceStatusText.Foreground = brush;
-		DeviceStatusDot.Fill = brush;
-		DeviceStatusDot.BeginAnimation(OpacityProperty, null);
-		DeviceStatusDot.Opacity = 1;
-		if (!pulse)
-		{
-			return;
-		}
-
-		DeviceStatusDot.BeginAnimation(
-			OpacityProperty,
-			new DoubleAnimation(1, 0.2, TimeSpan.FromMilliseconds(650))
-			{
-				AutoReverse = true,
-				RepeatBehavior = RepeatBehavior.Forever
-			});
 	}
 
 }

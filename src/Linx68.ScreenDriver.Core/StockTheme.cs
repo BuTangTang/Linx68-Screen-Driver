@@ -6,7 +6,7 @@ namespace Linx68.ScreenDriver.Core;
 public sealed class StockTheme : IScreenTheme
 {
     public string Id => "stocks";
-    public string DisplayName => "股票 (Beta)";
+    public string DisplayName => "股票（测试版）";
     public string Description => "最多三项市场行情";
     public string Details => "支持美股、港股、A 股与虚拟币代码，可配置别名和涨跌颜色。";
 

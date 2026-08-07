@@ -40,6 +40,16 @@ public partial class FeatureNoticeWindow : Window
             "请勿在公共电脑登录，并自行留意账号与平台规则"
         ]);
 
+    public static FeatureNoticeWindow CreateCodexNotice() => new(
+        "Codex 接入说明",
+        "在每台电脑上独立安装并授权",
+        "本应用只协助安装、登录与迁移 Codex 偏好配置，不会读取、复制或导出你的登录令牌。",
+        [
+            "可导出和导入的是 config.toml，不包含账号、API Key 或 auth.json",
+            "新电脑导入配置后，仍需使用自己的浏览器完成 Codex 登录",
+            "只从受信任的电脑导入配置；导入前会自动备份本机配置"
+        ]);
+
     private void Window_OnLoaded(object sender, RoutedEventArgs e)
     {
         if (!SystemParameters.ClientAreaAnimation)

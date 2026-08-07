@@ -70,7 +70,7 @@ ScreenRenderer.Render → RenderedFrame (142 × 428 baseline JPEG)
 - `AutomationViewModel`：自动推送、刷新间隔和媒体主题切换。
 - `SettingsViewModel`：设备 IPv4 分段输入、内容安全区和托盘/启动行为。
 
-`MainWindow` 目前仍是 WPF 组合控制器：它处理窗口生命周期、托盘、动画、文件/颜色选择器、首次引导、MiMo 登录和页面相关控件的可见性；这些行为不能由无 WPF 依赖的 Application 服务替代。主题的上下文数据卡仍会在后续切片继续从窗口中抽出。
+`MainWindow` 目前仍是 WPF 组合控制器：它处理动画、文件/颜色选择器、首次引导、MiMo 登录和页面相关控件的可见性；这些行为不能由无 WPF 依赖的 Application 服务替代。窗口生命周期与托盘行为、外观应用、设备状态呈现、设置状态/输入、显示方案画廊分别放在 `MainWindow.WindowLifecycle.cs`、`MainWindow.Appearance.cs`、`MainWindow.DeviceStatus.cs`、`MainWindow.SettingsState.cs`、`MainWindow.SettingsInput.cs` 与 `MainWindow.ThemeGallery.cs`，使主文件聚焦主题与数据编排。主题的上下文数据卡仍会在后续切片继续从窗口中抽出。
 
 ## 设置与失败策略
 

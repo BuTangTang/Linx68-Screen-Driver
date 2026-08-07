@@ -8,5 +8,9 @@ public sealed record MusicSnapshot(bool Available, string Title, string Artist, 
 
 	public string SourceAppId { get; init; } = string.Empty;
 
+	public string AlbumTitle { get; init; } = string.Empty;
+
+	public long? ProviderTrackId { get; init; }
+
 	public LyricsSnapshot Lyrics { get; init; } = LyricsSnapshot.Unavailable;
 }

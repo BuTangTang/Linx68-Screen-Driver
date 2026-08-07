@@ -6,7 +6,8 @@ public sealed class DashboardSnapshotBuilder(
     ISystemSnapshotSource systemSource,
     ILyricsSnapshotSource lyricsSource,
     IWeatherSnapshotSource weatherSource,
-    IStockSnapshotSource stockSource) : IDashboardSnapshotBuilder
+    IStockSnapshotSource stockSource,
+    IMusicSnapshotEnricher? musicEnricher = null) : IDashboardSnapshotBuilder
 {
     public async Task<SystemSnapshot> BuildAsync(
         ThemeDefinition theme,
@@ -26,9 +27,13 @@ public sealed class DashboardSnapshotBuilder(
             && settings.Music?.EnableOnlineLyrics == true
             && music.Available)
         {
-            effectiveMusic = music with
+            if (musicEnricher is not null)
             {
-                Lyrics = await lyricsSource.ReadAsync(music, cancellationToken)
+                effectiveMusic = await musicEnricher.EnrichAsync(effectiveMusic, cancellationToken);
+            }
+            effectiveMusic = effectiveMusic with
+            {
+                Lyrics = await lyricsSource.ReadAsync(effectiveMusic, cancellationToken)
             };
         }
 

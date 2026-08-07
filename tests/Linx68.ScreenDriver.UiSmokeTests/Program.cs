@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Ellipse = System.Windows.Shapes.Ellipse;
 using System.IO;
 using Linx68.ScreenDriver.App;
 using Linx68.ScreenDriver.App.ViewModels;
@@ -46,6 +47,8 @@ internal static class Program
         VerifyFeatureNoticeGeometry();
         VerifySettingsIpEditorGeometry();
         VerifyWorkspaceGeometry();
+		VerifyAutomationControlDependency();
+		VerifyNavigationResetsScrollPosition();
 		VerifyRuntimeAppearanceSwitch(app);
         VerifySaveFailureIsHandled();
 
@@ -53,6 +56,7 @@ internal static class Program
         if (captureIndex >= 0)
         {
             Assert(captureIndex + 3 < args.Length, "--capture requires path, width and height");
+            bool allSchemes = args.Contains("--all-schemes", StringComparer.OrdinalIgnoreCase);
             CaptureMainWindow(
                 args[captureIndex + 1],
                 int.Parse(args[captureIndex + 2]),
@@ -64,7 +68,10 @@ internal static class Program
                         ? "automation"
                         : args.Contains("--settings", StringComparer.OrdinalIgnoreCase)
                             ? "settings"
-                        : "screen");
+                            : args.Contains("--about", StringComparer.OrdinalIgnoreCase)
+                                ? "about"
+                                : "screen",
+                allSchemes);
         }
 
         Console.WriteLine("All UI smoke tests passed.");
@@ -94,15 +101,28 @@ internal static class Program
             "clock");
         Assert(viewModel.ThemeGroups.Count == 5
                && viewModel.ThemeGroups.Single(group => group.Id == "music").Themes.Count == 5
-               && viewModel.ThemeGroups.Sum(group => group.Themes.Count) == definitions.Count,
-            "screen view model must partition every display scheme into its category group");
+               && viewModel.ThemeGroups.Sum(group => group.Themes.Count) == definitions.Count
+               && !viewModel.IsAllCategorySelected
+               && viewModel.VisibleThemes.All(theme => theme.Definition.CategoryId == viewModel.SelectedTheme!.Definition.CategoryId),
+            "screen view model must open the current scheme category through the left navigation");
+        viewModel.SelectCategory("all");
+        Assert(viewModel.IsAllCategorySelected && viewModel.VisibleThemes.Count == definitions.Count,
+            "the all-schemes category must remain available on demand");
+        viewModel.SelectCategory("music");
         viewModel.SelectTheme("music-vinyl", notify: true);
         viewModel.UpdateCardWidth(500);
-        Assert(viewModel.SelectedTheme?.Id == "music-vinyl"
+        Assert(!viewModel.IsAllCategorySelected
+               && viewModel.ThemeGroups.Single(group => group.Id == "music").IsSelected
+               && viewModel.VisibleThemes.All(theme => theme.Definition.CategoryId == "music")
+               && viewModel.SelectedTheme?.Id == "music-vinyl"
                && selectionCount == 1
-               && viewModel.ThemeGroups.SelectMany(group => group.Themes).All(theme => theme.CardWidth > 196),
-            "screen view model must synchronize selection, grouped cards and responsive card width");
-        Console.WriteLine("PASS MVVM screen groups, selection and responsive cards");
+               && viewModel.ThemeGroups.SelectMany(group => group.Themes).All(theme => theme.CardWidth >= 148)
+               && viewModel.ThemeGroups.SelectMany(group => group.Themes).All(theme => theme.CardWidth * 2 + 24 <= 500),
+            "screen view model must synchronize category filtering, selection and responsive compact cards");
+        viewModel.UpdateCardWidth(960);
+        Assert(viewModel.ThemeGroups.SelectMany(group => group.Themes).All(theme => theme.CardWidth * 3 + 36 <= 960),
+            "wide galleries must use three columns to reduce unnecessary vertical scrolling");
+        Console.WriteLine("PASS MVVM screen categories, selection and responsive compact cards");
     }
 
     private static void VerifyAppearanceViewModel()
@@ -192,7 +212,7 @@ internal static class Program
         Console.WriteLine("PASS MVVM settings state and device endpoint mapping");
     }
 
-    private static void CaptureMainWindow(string path, int width, int height, bool dark, string page)
+    private static void CaptureMainWindow(string path, int width, int height, bool dark, string page, bool allSchemes)
     {
         var settings = new AppSettings
         {
@@ -210,6 +230,10 @@ internal static class Program
         };
         window.Show();
         WaitForDispatcher(TimeSpan.FromMilliseconds(1400));
+        if (allSchemes)
+        {
+            ((ShellViewModel)window.DataContext).Screen.SelectCategory("all");
+        }
         if (page == "appearance")
         {
             ((RadioButton)window.FindName("ThemeNav")).IsChecked = true;
@@ -222,6 +246,10 @@ internal static class Program
         {
             ((Button)window.FindName("EndpointShortcutButton")).RaiseEvent(
                 new RoutedEventArgs(Button.ClickEvent));
+        }
+        else if (page == "about")
+        {
+            ((RadioButton)window.FindName("AboutNav")).IsChecked = true;
         }
         WaitForDispatcher(TimeSpan.FromMilliseconds(250));
         window.UpdateLayout();
@@ -316,9 +344,13 @@ internal static class Program
     {
         var window = new MainWindow();
 		Assert(window.Title == "灵犀68屏幕驱动", $"unexpected product title: {window.Title}");
+        var windowRoot = (Border)window.FindName("WindowRoot");
+        var titleBar = (Grid)window.FindName("TitleBar");
         var workspace = (Grid)window.FindName("WorkspaceLayout");
         var content = (Grid)window.FindName("ContentLayout");
-		var themeGroups = (ItemsControl)window.FindName("ThemeGroupPanel");
+		var themeCategories = (ItemsControl)window.FindName("ThemeCategoryPanel");
+		var themeGallery = (ItemsControl)window.FindName("ThemeGalleryPanel");
+		var themeCategoryNavigation = (StackPanel)window.FindName("ThemeCategoryNavigation");
 		var shell = (ShellViewModel)window.DataContext;
 		var locateCurrent = (Button)window.FindName("LocateCurrentButton");
 		var endpointShortcut = (Button)window.FindName("EndpointShortcutButton");
@@ -326,17 +358,29 @@ internal static class Program
 		var screenNavigation = (RadioButton)window.FindName("ScreenNav");
 		var deviceStatus = (TextBlock)window.FindName("DeviceStatusText");
 		var deviceStatusDot = (System.Windows.Shapes.Ellipse)window.FindName("DeviceStatusDot");
-		window.UpdateLayout();
+		var previewStatus = (TextBlock)window.FindName("PreviewStatusText");
+		var windowBehavior = (Border)window.FindName("WindowBehaviorCard");
+		var startupBehavior = (Border)window.FindName("StartupBehaviorCard");
+        window.UpdateLayout();
 		WaitForDispatcher(TimeSpan.FromMilliseconds(50));
+		Assert(windowRoot.Background is not null
+		       && titleBar.Background is not null
+		       && System.Windows.Shell.WindowChrome.GetWindowChrome(window)?.CaptionHeight == 56,
+			"the application frame must keep a stable themed background and compact title bar");
         Assert(workspace.ColumnDefinitions[0].Width.Value == 196,
             $"workspace sidebar must be 196px: {workspace.ColumnDefinitions[0].Width.Value}");
         Assert(content.ColumnDefinitions[2].Width.Value == 288,
             $"preview rail must remain 288px: {content.ColumnDefinitions[2].Width.Value}");
-		Assert(themeGroups.Items.Count == 5
+		Assert(themeCategories.Items.Count == 5
+		       && themeGallery.Items.Count == shell.Screen.VisibleThemes.Count
+		       && themeGallery.Items.Count <= 5
 		       && shell.Screen.ThemeGroups.Sum(group => group.Themes.Count) == 19,
-			"display schemes must be visibly partitioned into five category sections");
-		Assert(window.FindName("ThemeListPanel") is null && window.FindName("ThemeCategoryList") is null,
-			"the old mixed gallery and subtle category filter must no longer be used");
+			"display schemes must use the left category navigation with one compact gallery");
+		Assert(themeCategoryNavigation.VerticalAlignment == VerticalAlignment.Top
+		       && themeCategoryNavigation.MinHeight == 0,
+			"the scheme navigation must remain a compact list instead of a full-height empty panel");
+		Assert(window.FindName("ThemeGroupPanel") is null && window.FindName("ThemeListPanel") is null,
+			"the old stacked category sections and mixed gallery must no longer be used");
 		Assert(sidebarNavigation.Children.Count == 5
 		       && screenNavigation.FontSize == 15,
 			"sidebar navigation must omit the redundant workspace heading and improve text legibility");
@@ -344,6 +388,11 @@ internal static class Program
 		       && deviceStatus.FontSize == 14
 		       && deviceStatus.Foreground == deviceStatusDot.Fill,
 			"device status must start as a clear offline state with a matching status indicator");
+		Assert(previewStatus.Text == "本地预览",
+			"offline devices must explain that the preview remains local and responsive");
+		Assert(windowBehavior.Padding == new Thickness(0)
+		       && startupBehavior.Padding == new Thickness(0),
+			"related tray and startup controls must be compactly grouped into their respective setting cards");
 		Assert(locateCurrent.Visibility == Visibility.Visible && Equals(locateCurrent.Content, "定位当前"),
 			"display page must expose a single locate-current action instead of mode tabs");
 		locateCurrent.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -355,7 +404,68 @@ internal static class Program
 		Assert(shell.IsSettingsPage && endpointShortcut.ToolTip?.ToString()?.Contains("设置") == true,
 			"clicking the device-address shortcut must open the settings page");
 		window.Close();
-		Console.WriteLine("PASS compact sidebar, grouped display schemes, locate-current action and fixed preview rail");
+        Console.WriteLine("PASS compact sidebar, left scheme categories, compact gallery, locate-current action and fixed preview rail");
+    }
+
+    private static void VerifyAutomationControlDependency()
+    {
+        var settings = new AppSettings
+        {
+            HasCompletedOnboarding = true,
+            AutoPush = true,
+            MinimizeToTray = false,
+            CloseToTray = false
+        };
+        var window = new MainWindow(settings, new InMemorySettingsStore(settings));
+        window.Show();
+        WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+        ((RadioButton)window.FindName("AutomationNav")).IsChecked = true;
+        WaitForDispatcher(TimeSpan.FromMilliseconds(100));
+        var autoPush = (CheckBox)window.FindName("AutoPushCheckBox");
+        var refreshPanel = (Grid)window.FindName("RefreshIntervalPanel");
+        var refreshSlider = (Slider)window.FindName("RefreshIntervalSlider");
+		var deviceStatusDot = (Ellipse)window.FindName("DeviceStatusDot");
+        Assert(autoPush.IsChecked == true && refreshPanel.IsEnabled && refreshSlider.IsEnabled,
+            "the refresh interval must be editable while timed push is enabled");
+		Assert(!deviceStatusDot.HasAnimatedProperties,
+			"device connection state must remain static instead of continuously pulsing");
+        autoPush.IsChecked = false;
+        WaitForDispatcher(TimeSpan.FromMilliseconds(100));
+        Assert(!refreshPanel.IsEnabled && !refreshSlider.IsEnabled && refreshPanel.Opacity < 1,
+            "the refresh interval must be visibly disabled while timed push is off");
+        window.Close();
+        Console.WriteLine("PASS timed-push interval follows its controlling switch");
+    }
+
+    private static void VerifyNavigationResetsScrollPosition()
+    {
+        var settings = new AppSettings
+        {
+            HasCompletedOnboarding = true,
+            MinimizeToTray = false,
+            CloseToTray = false
+        };
+        var window = new MainWindow(settings, new InMemorySettingsStore(settings))
+        {
+            Width = 1080,
+            Height = 680
+        };
+        window.Show();
+        WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+        var shell = (ShellViewModel)window.DataContext;
+        shell.Screen.SelectCategory("all");
+        var scrollViewer = (ScrollViewer)window.FindName("ThemeScrollViewer");
+        window.UpdateLayout();
+        scrollViewer.ScrollToVerticalOffset(160);
+        WaitForDispatcher(TimeSpan.FromMilliseconds(100));
+        Assert(scrollViewer.VerticalOffset > 0,
+            "the all-schemes gallery must be scrollable for navigation reset verification");
+        ((RadioButton)window.FindName("SettingsNav")).IsChecked = true;
+        WaitForDispatcher(TimeSpan.FromMilliseconds(100));
+        Assert(scrollViewer.VerticalOffset == 0,
+            "switching pages must return the shared content scroll position to the top");
+        window.Close();
+        Console.WriteLine("PASS page navigation returns shared content to the top");
     }
 
     private static void VerifyFeatureNoticeGeometry()
@@ -384,6 +494,13 @@ internal static class Program
         var mimoTitle = (TextBlock)mimoWindow.FindName("TitleText");
         Assert(mimoTitle.Text.Contains("MiMo"), "MiMo notice must identify the integration");
         mimoWindow.Close();
+
+        var codexWindow = FeatureNoticeWindow.CreateCodexNotice();
+        var codexTitle = (TextBlock)codexWindow.FindName("TitleText");
+        var codexDetails = (ItemsControl)codexWindow.FindName("DetailsList");
+        Assert(codexTitle.Text.Contains("Codex") && codexDetails.Items.Count == 3,
+            "Codex notice must explain the separate per-device login and portable configuration");
+        codexWindow.Close();
         Console.WriteLine("PASS one-time feature notices share first-run geometry and content structure");
     }
 
@@ -413,18 +530,34 @@ internal static class Program
 
     private static void VerifySettingsIpEditorGeometry()
     {
-        var window = new MainWindow();
+        var settings = new AppSettings
+        {
+            HasCompletedOnboarding = true,
+            MinimizeToTray = false,
+            CloseToTray = false
+        };
+        var window = new MainWindow(settings, new InMemorySettingsStore(settings));
         var host = (Border)window.FindName("SettingsIpAddressHost");
         var safeAreaHost = (Border)window.FindName("SafeAreaInputHost");
         var firstRunWindow = new FirstRunGuideWindow("192.168.1.100");
         var firstRunHost = (Border)firstRunWindow.FindName("IpAddressHost");
+        var firstPlaceholder = (TextBlock)window.FindName("EndpointIpPart1Placeholder");
+        var firstRunPlaceholder = (TextBlock)firstRunWindow.FindName("IpPart1Placeholder");
         var populate = typeof(MainWindow).GetMethod("PopulateEndpointParts", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         Assert(populate is not null, "settings IP editor must expose its population path");
+        window.Show();
+        firstRunWindow.Show();
+        WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+        Assert(firstPlaceholder.Visibility == Visibility.Visible && firstRunPlaceholder.Visibility == Visibility.Collapsed,
+            "empty settings fields must show an IP format example while populated first-run fields must hide it");
         populate!.Invoke(window, ["192.168.1.100"]);
+        window.UpdateLayout();
 
         var summary = (TextBlock)window.FindName("EndpointSummaryText");
         Assert(host.Height == firstRunHost.Height && host.CornerRadius == firstRunHost.CornerRadius,
             $"settings and first-run IP editors must share geometry: settings {host.Height}px/{host.CornerRadius}, guide {firstRunHost.Height}px/{firstRunHost.CornerRadius}");
+        Assert(firstPlaceholder.Visibility == Visibility.Collapsed,
+            "the IP format example must disappear after a valid address is populated");
         Assert(host.Child is Grid ipGrid && ipGrid.Children.OfType<TextBox>().Count() == 4,
             "settings IP address editor must keep four equal input segments");
         Assert(safeAreaHost.Height == host.Height && safeAreaHost.CornerRadius == host.CornerRadius,

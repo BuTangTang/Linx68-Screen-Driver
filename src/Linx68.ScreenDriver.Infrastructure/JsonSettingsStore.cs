@@ -126,6 +126,10 @@ public sealed class JsonSettingsStore : ISettingsStore
 		settings.SafeArea ??= new ScreenInsets(10, 52, 10, 12);
 		settings.Music ??= new MusicSettings();
 		settings.AiQuota ??= new AiQuotaSettings();
+		if (!Enum.IsDefined(settings.AiQuota.SourceKind))
+		{
+			settings.AiQuota.SourceKind = AiQuotaSourceKind.XiaomiMiMoTokenPlanChina;
+		}
 		settings.Weather ??= new WeatherSettings();
 		settings.Stocks ??= new StockSettings();
 		settings.RefreshSeconds = Math.Clamp(settings.RefreshSeconds, 1, 30);

@@ -29,7 +29,7 @@ public sealed partial class ThemeCardViewModel(
     private double cardWidth = double.NaN;
 }
 
-public sealed class ThemeGroupViewModel(
+public sealed partial class ThemeGroupViewModel(
     string id,
     string displayName,
     string description) : ObservableObject
@@ -41,6 +41,9 @@ public sealed class ThemeGroupViewModel(
     public string Description { get; } = description;
 
     public ObservableCollection<ThemeCardViewModel> Themes { get; } = [];
+
+    [ObservableProperty]
+    private bool isSelected;
 
     public string CountText => $"{Themes.Count} 个方案";
 
@@ -75,6 +78,15 @@ public sealed partial class ScreenViewModel : ObservableObject
 
     public ObservableCollection<ThemeGroupViewModel> ThemeGroups { get; }
 
+    public ObservableCollection<ThemeCardViewModel> VisibleThemes { get; } = [];
+
+    public int AllThemeCount => _allThemes.Count;
+
+    public string VisibleThemeCountText => $"{(IsAllCategorySelected ? "全部方案" : ThemeGroups.First(group => group.IsSelected).DisplayName)} · {VisibleThemes.Count} 个";
+
+    [ObservableProperty]
+    private bool isAllCategorySelected = true;
+
     [ObservableProperty]
     private ThemeCardViewModel? selectedTheme;
 
@@ -96,6 +108,7 @@ public sealed partial class ScreenViewModel : ObservableObject
 
         RefreshThemeGroups();
         SelectTheme(selectedThemeId, notify: false);
+        SelectCategory(SelectedTheme?.Definition.CategoryId ?? "all");
     }
 
     public void SelectTheme(string? themeId, bool notify)
@@ -136,13 +149,23 @@ public sealed partial class ScreenViewModel : ObservableObject
             return;
         }
 
-        double cardWidth = availableWidth >= 400
-            ? Math.Max(196, (availableWidth - 44) / 2)
-            : Math.Max(196, availableWidth - 12);
+        int columnCount = availableWidth >= 960 ? 3 : availableWidth >= 320 ? 2 : 1;
+        double cardWidth = Math.Max(148, (availableWidth - 12 * columnCount) / columnCount);
         foreach (ThemeCardViewModel theme in _allThemes)
         {
             theme.CardWidth = cardWidth;
         }
+    }
+
+    public void SelectCategory(string categoryId)
+    {
+        IsAllCategorySelected = string.Equals(categoryId, "all", StringComparison.OrdinalIgnoreCase);
+        foreach (ThemeGroupViewModel group in ThemeGroups)
+        {
+            group.IsSelected = string.Equals(group.Id, categoryId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        RefreshVisibleThemes();
     }
 
     private void RefreshThemeGroups()
@@ -152,6 +175,24 @@ public sealed partial class ScreenViewModel : ObservableObject
             group.SetThemes(_allThemes.Where(theme =>
                 string.Equals(theme.Definition.CategoryId, group.Id, StringComparison.OrdinalIgnoreCase)));
         }
+
+        OnPropertyChanged(nameof(VisibleThemeCountText));
+        OnPropertyChanged(nameof(AllThemeCount));
+    }
+
+    private void RefreshVisibleThemes()
+    {
+        IEnumerable<ThemeCardViewModel> themes = IsAllCategorySelected
+            ? _allThemes
+            : ThemeGroups.FirstOrDefault(group => group.IsSelected)?.Themes ?? [];
+
+        VisibleThemes.Clear();
+        foreach (ThemeCardViewModel theme in themes)
+        {
+            VisibleThemes.Add(theme);
+        }
+
+        OnPropertyChanged(nameof(VisibleThemeCountText));
     }
 
     private void Theme_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)

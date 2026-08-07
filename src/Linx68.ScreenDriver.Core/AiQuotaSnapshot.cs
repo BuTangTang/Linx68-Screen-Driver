@@ -53,6 +53,9 @@ public sealed record AiQuotaSnapshot(
     public static AiQuotaSnapshot Empty { get; } =
         new(false, "AI", AiAccessType.Subscription, 0);
 
+    public static AiQuotaSnapshot Unavailable(string platformName) =>
+        new(false, platformName, AiAccessType.Subscription, 0);
+
     public double ClampedRemainingPercent =>
         Math.Clamp(RemainingPercent, 0d, 100d);
 

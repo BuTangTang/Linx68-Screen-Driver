@@ -322,13 +322,13 @@ public static class BuiltInThemes
 		MusicSnapshot musicSnapshot = s.Music ?? MusicSnapshot.Unavailable;
 		Rect safeBounds = c.SafeBounds;
 		c.Fill(Color.FromRgb(7, 9, 13));
-		c.Text(musicSnapshot.IsPlaying ? "PLAYING" : "PAUSED", 9.0, c.AccentColor, new Point(safeBounds.Left, safeBounds.Top + 7.0), FontWeights.SemiBold);
+		c.Text(musicSnapshot.IsPlaying ? "正在播放" : "已暂停", 9.0, c.AccentColor, new Point(safeBounds.Left, safeBounds.Top + 7.0), FontWeights.SemiBold);
 		c.Text(musicSnapshot.Title, 22.0, Colors.White, new Point(safeBounds.Left, safeBounds.Top + 73.0), FontWeights.SemiBold, TextAlignment.Left, safeBounds.Width, 92.0);
 		c.Text(string.IsNullOrWhiteSpace(musicSnapshot.Artist) ? "Windows Media" : musicSnapshot.Artist, 11.0, Color.FromRgb(126, 139, 153), new Point(safeBounds.Left, safeBounds.Top + 181.0), FontWeights.Medium, TextAlignment.Left, safeBounds.Width, 24.0);
 		bool flag = musicSnapshot.Duration.TotalSeconds <= 0.0;
 		double percent = (flag ? ((double)(musicSnapshot.IsPlaying ? 100 : 0)) : (musicSnapshot.Position.TotalSeconds / musicSnapshot.Duration.TotalSeconds * 100.0));
 		c.ProgressBar(new Rect(safeBounds.Left, safeBounds.Top + 247.0, safeBounds.Width, 8.0), percent, Color.FromRgb(35, 42, 51), c.AccentColor);
-		c.Text(flag ? "LIVE" : Time(musicSnapshot.Position), 10.0, c.AccentColor, new Point(safeBounds.Left, safeBounds.Top + 271.0), FontWeights.SemiBold);
+		c.Text(flag ? "直播" : Time(musicSnapshot.Position), 10.0, c.AccentColor, new Point(safeBounds.Left, safeBounds.Top + 271.0), FontWeights.SemiBold);
 		c.Text(flag ? "ON AIR" : Time(musicSnapshot.Duration), 10.0, Color.FromRgb(126, 139, 153), new Point(safeBounds.Left, safeBounds.Top + 271.0), FontWeights.SemiBold, TextAlignment.Right, safeBounds.Width);
 		c.Text(s.Timestamp.ToString("HH:mm"), 18.0, Colors.White, new Point(safeBounds.Left, safeBounds.Bottom - 45.0), FontWeights.SemiBold);
 	}
@@ -349,7 +349,7 @@ public static class BuiltInThemes
 		bool live = music.Duration.TotalSeconds <= 0;
 		double percent = live ? (music.IsPlaying ? 100 : 0) : music.Position.TotalSeconds / music.Duration.TotalSeconds * 100;
 		c.ProgressBar(new Rect(card.Left + 12, card.Bottom - 40, card.Width - 24, 6), percent, Color.FromRgb(45, 51, 60), c.AccentColor);
-		c.Text(live ? "LIVE" : Time(music.Position), 9.5, Colors.White, new Point(card.Left + 12, card.Bottom - 27), FontWeights.SemiBold);
+		c.Text(live ? "直播" : Time(music.Position), 9.5, Colors.White, new Point(card.Left + 12, card.Bottom - 27), FontWeights.SemiBold);
 		c.Text(live ? "ON AIR" : Time(music.Duration), 9.5, Color.FromRgb(190, 199, 209),
 			new Point(card.Left + 12, card.Bottom - 27), FontWeights.SemiBold, TextAlignment.Right, card.Width - 24);
 	}

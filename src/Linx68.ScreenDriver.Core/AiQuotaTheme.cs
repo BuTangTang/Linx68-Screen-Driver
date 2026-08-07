@@ -6,7 +6,7 @@ namespace Linx68.ScreenDriver.Core;
 public sealed class AiQuotaTheme : IScreenTheme
 {
     public string Id => "ai-quota";
-    public string DisplayName => "AI用量 (Beta)";
+    public string DisplayName => "AI 用量（测试版）";
     public string Description => "单平台剩余额度能量条";
     public string Details => "从下向上显示 AI 剩余额度，支持 API Key 与订阅制数据。";
 
@@ -19,7 +19,7 @@ public sealed class AiQuotaTheme : IScreenTheme
         canvas.Fill(Color.FromRgb(6, 9, 13));
 
         canvas.Text(
-            "AI QUOTA",
+            "AI 用量",
             8.5,
             Color.FromRgb(108, 121, 136),
             new Point(safe.Left, safe.Top + 7),
@@ -73,7 +73,7 @@ public sealed class AiQuotaTheme : IScreenTheme
             }
         }
 
-        var platformName = quota.Available && !string.IsNullOrWhiteSpace(quota.PlatformName)
+        var platformName = !string.IsNullOrWhiteSpace(quota.PlatformName)
             ? quota.PlatformName.Trim()
             : "AI";
         canvas.Text(
@@ -97,7 +97,7 @@ public sealed class AiQuotaTheme : IScreenTheme
             38);
 
         canvas.Text(
-            quota.Available ? FormatMetric(quota) : "等待数据源",
+            quota.Available ? FormatMetric(quota) : "等待额度数据",
             7.5,
             Color.FromRgb(91, 103, 117),
             new Point(safe.Left, safe.Bottom - 13),
@@ -112,17 +112,17 @@ public sealed class AiQuotaTheme : IScreenTheme
         if (quota.AccessType == AiAccessType.Subscription)
         {
             return quota.ResetPeriod == AiResetPeriod.None
-                ? "SUBSCRIPTION"
-                : $"SUBSCRIPTION · {ResetLabel(quota.ResetPeriod)}";
+                ? "订阅额度"
+                : $"订阅 · {ResetLabel(quota.ResetPeriod)}";
         }
 
         return quota.Balance?.Metric switch
         {
-            AiQuotaMetric.Token => "API KEY · TOKEN",
-            AiQuotaMetric.Cost => "API KEY · COST",
-            AiQuotaMetric.Credit => "API KEY · CREDIT",
-            AiQuotaMetric.Request => "API KEY · REQUEST",
-            _ => "API KEY · QUOTA"
+            AiQuotaMetric.Token => "密钥 · 令牌",
+            AiQuotaMetric.Cost => "密钥 · 费用",
+            AiQuotaMetric.Credit => "密钥 · 额度",
+            AiQuotaMetric.Request => "密钥 · 请求",
+            _ => "密钥 · 额度"
         };
     }
 
@@ -134,7 +134,7 @@ public sealed class AiQuotaTheme : IScreenTheme
         }
 
         return quota.ResetsAt is { } resetsAt
-            ? resetsAt.ToLocalTime().ToString("MM/dd HH:mm")
+            ? resetsAt.ToLocalTime().ToString("MM月dd日 HH:mm")
             : ResetLabel(quota.ResetPeriod);
     }
 
