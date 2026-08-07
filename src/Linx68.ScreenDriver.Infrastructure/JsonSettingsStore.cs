@@ -63,7 +63,7 @@ public sealed class JsonSettingsStore : ISettingsStore
 			}
 
 			await using FileStream stream = File.OpenRead(Path);
-			AppSettings settings = await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions, cancellationToken)
+			AppSettings settings = await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions, cancellationToken).ConfigureAwait(false)
 				?? new AppSettings();
 			return Normalize(settings);
 		}
@@ -99,8 +99,8 @@ public sealed class JsonSettingsStore : ISettingsStore
 				bufferSize: 4096,
 				FileOptions.Asynchronous | FileOptions.WriteThrough))
 			{
-				await JsonSerializer.SerializeAsync(stream, settings, JsonOptions, cancellationToken);
-				await stream.FlushAsync(cancellationToken);
+				await JsonSerializer.SerializeAsync(stream, settings, JsonOptions, cancellationToken).ConfigureAwait(false);
+				await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
 			}
 
 			File.Move(temporaryPath, Path, overwrite: true);

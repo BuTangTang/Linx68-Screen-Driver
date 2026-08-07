@@ -14,6 +14,7 @@ using System.Windows.Controls;
 using System.Windows.Forms;
 using System.Windows.Markup;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Resources;
 using System.Windows.Shapes;
@@ -324,7 +325,7 @@ public partial class MainWindow : Window
 		{
 			_suppressThemeRefresh = previousSuppression;
 		}
-		_screenViewModel.UpdateCardWidth(ThemeListPanel.ActualWidth);
+		_screenViewModel.UpdateCardWidth(ThemeGroupPanel.ActualWidth);
 	}
 
 	private ThemeCardViewModel CreateThemeCard(ThemeDefinition definition)
@@ -456,7 +457,7 @@ public partial class MainWindow : Window
 		AppearanceManager.Apply(_settings.AppearanceMode);
 		ApplyWindowBackdrop();
 		DevicePreview?.InvalidateVisual();
-		if (_themeDefinitions.Count > 0 && ThemeListPanel is not null)
+		if (_themeDefinitions.Count > 0 && ThemeGroupPanel is not null)
 		{
 			BuildThemeList();
 		}
@@ -484,8 +485,8 @@ public partial class MainWindow : Window
 			await _settingsStore.SaveAsync(_settings);
 		}
 		_loaded = true;
+		SetDeviceStatus(success: false);
 		_timer.Start();
-		await RefreshPreviewAsync();
 		UpdateTrayVisibility();
 		if ((_settings.StartMinimized || Environment.GetCommandLineArgs().Any(argument => string.Equals(argument, "--startup", StringComparison.OrdinalIgnoreCase))) && !_startMinimizeApplied)
 		{
@@ -936,18 +937,39 @@ public partial class MainWindow : Window
 		_screenViewModel.SelectTheme(_settings.SelectedThemeId, notify: true);
 	}
 
-	private void ThemeListPanel_OnSizeChanged(object sender, SizeChangedEventArgs e) =>
+	private void ThemeGroupPanel_OnSizeChanged(object sender, SizeChangedEventArgs e) =>
 		_screenViewModel.UpdateCardWidth(e.NewSize.Width);
 
 	private void LocateCurrent_OnClick(object sender, RoutedEventArgs e)
 	{
-		_screenViewModel.SelectCategory("all");
-
 		Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
 		{
-			(ThemeListPanel.ItemContainerGenerator.ContainerFromItem(_screenViewModel.SelectedTheme) as FrameworkElement)
-				?.BringIntoView();
+			if (_screenViewModel.SelectedTheme is { } selectedTheme)
+			{
+				FindElementByDataContext(ThemeGroupPanel, selectedTheme)?.BringIntoView();
+			}
 		});
+	}
+
+	private static FrameworkElement? FindElementByDataContext(DependencyObject root, object dataContext)
+	{
+		if (root is FrameworkElement element && ReferenceEquals(element.DataContext, dataContext))
+		{
+			return element;
+		}
+
+		for (int index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+		{
+			FrameworkElement? descendant = FindElementByDataContext(
+				VisualTreeHelper.GetChild(root, index),
+				dataContext);
+			if (descendant is not null)
+			{
+				return descendant;
+			}
+		}
+
+		return null;
 	}
 
 	private void AppearanceViewModel_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -1511,10 +1533,6 @@ public partial class MainWindow : Window
 				InteractionMotion.Reveal(WindowRoot, 8.0, 0.994);
 			}
 		}
-		else if (_loaded && _settingsViewModel.MinimizeToTray)
-		{
-			HideToTray();
-		}
 	}
 
 	private void MainWindow_OnClosing(object? sender, CancelEventArgs e)
@@ -1601,18 +1619,38 @@ public partial class MainWindow : Window
 
 	private void SetDeviceStatus(bool success)
 	{
-		DeviceStatusText.Text = (success ? "设备在线" : "断开连接");
-		System.Windows.Media.Brush brush = (success ? ((System.Windows.Media.Brush)FindResource("SuccessBrush")) : ((System.Windows.Media.Brush)FindResource("SecondaryText")));
-		DeviceStatusText.Foreground = brush;
-		DeviceStatusDot.Fill = brush;
+		DeviceStatusText.Text = success ? "设备在线" : "设备离线";
+		System.Windows.Media.Brush brush = success
+			? (System.Windows.Media.Brush)FindResource("SuccessBrush")
+			: (System.Windows.Media.Brush)FindResource("DangerBrush");
+		SetDeviceStatusVisual(brush, pulse: !success);
 	}
 
 	private void SetOperationFailure(string message)
 	{
 		DeviceStatusText.Text = message;
 		System.Windows.Media.Brush brush = (System.Windows.Media.Brush)FindResource("DangerBrush");
+		SetDeviceStatusVisual(brush, pulse: false);
+	}
+
+	private void SetDeviceStatusVisual(System.Windows.Media.Brush brush, bool pulse)
+	{
 		DeviceStatusText.Foreground = brush;
 		DeviceStatusDot.Fill = brush;
+		DeviceStatusDot.BeginAnimation(OpacityProperty, null);
+		DeviceStatusDot.Opacity = 1;
+		if (!pulse)
+		{
+			return;
+		}
+
+		DeviceStatusDot.BeginAnimation(
+			OpacityProperty,
+			new DoubleAnimation(1, 0.2, TimeSpan.FromMilliseconds(650))
+			{
+				AutoReverse = true,
+				RepeatBehavior = RepeatBehavior.Forever
+			});
 	}
 
 }

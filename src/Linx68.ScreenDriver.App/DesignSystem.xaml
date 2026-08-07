@@ -488,10 +488,11 @@
     <Style x:Key="SideNavRadio" TargetType="RadioButton">
         <Setter Property="local:InteractionMotion.IsInteractive" Value="True" />
         <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource PrimaryText}" />
         <Setter Property="Margin" Value="0,0,0,4" />
-        <Setter Property="Height" Value="44" />
+        <Setter Property="Height" Value="48" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Template">

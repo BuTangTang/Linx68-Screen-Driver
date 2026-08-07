@@ -15,8 +15,8 @@ namespace Linx68.ScreenDriver.App;
 
 public partial class App : System.Windows.Application
 {
-    private const string InstanceMutexName = "Local\\KeyboardScreenStudio.Instance";
-    private const string ActivationEventName = "Local\\KeyboardScreenStudio.Activate";
+    private const string InstanceMutexName = "Local\\Linx68ScreenDriver.Instance.v2";
+    private const string ActivationEventName = "Local\\Linx68ScreenDriver.Activate.v2";
     private Mutex? _instanceMutex;
     private EventWaitHandle? _activationEvent;
     private CancellationTokenSource? _activationCancellation;
@@ -72,8 +72,6 @@ public partial class App : System.Windows.Application
         window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
         window.WindowState = WindowState.Normal;
         window.Topmost = true;
-        window.Show();
-        window.Activate();
         window.ContentRendered += (_, _) =>
         {
             window.Show();
@@ -81,6 +79,8 @@ public partial class App : System.Windows.Application
             window.Activate();
             window.Topmost = false;
         };
+        window.Show();
+        window.Activate();
 
         _activationCancellation = new CancellationTokenSource();
         _ = Task.Run(() => WaitForActivation(_activationCancellation.Token));

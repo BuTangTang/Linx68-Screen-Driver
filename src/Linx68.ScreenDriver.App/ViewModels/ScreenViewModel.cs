@@ -1,8 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Linx68.ScreenDriver.Core;
-using System.Windows.Media;
 
 namespace Linx68.ScreenDriver.App.ViewModels;
 
@@ -18,7 +18,7 @@ public sealed partial class ThemeCardViewModel(
 
     public string Description => Definition.Theme.Description;
 
-    public string Metadata => $"{Definition.CategoryDisplayName}  ·  {(Definition.IsStatic ? "静态" : "动态")}";
+    public string Metadata => $"{Definition.CategoryDisplayName} · {(Definition.IsStatic ? "静态" : "动态")}";
 
     public ImageSource? Preview { get; } = preview;
 
@@ -29,50 +29,51 @@ public sealed partial class ThemeCardViewModel(
     private double cardWidth = double.NaN;
 }
 
-public sealed partial class ThemeCategoryOptionViewModel(
+public sealed class ThemeGroupViewModel(
     string id,
-    string displayName) : ObservableObject
+    string displayName,
+    string description) : ObservableObject
 {
     public string Id { get; } = id;
 
     public string DisplayName { get; } = displayName;
 
-    [ObservableProperty]
-    private bool isSelected;
+    public string Description { get; } = description;
+
+    public ObservableCollection<ThemeCardViewModel> Themes { get; } = [];
+
+    public string CountText => $"{Themes.Count} 个方案";
+
+    internal void SetThemes(IEnumerable<ThemeCardViewModel> themes)
+    {
+        Themes.Clear();
+        foreach (ThemeCardViewModel theme in themes)
+        {
+            Themes.Add(theme);
+        }
+
+        OnPropertyChanged(nameof(CountText));
+    }
 }
 
 public sealed partial class ScreenViewModel : ObservableObject
 {
     private readonly List<ThemeCardViewModel> _allThemes = [];
     private bool _synchronizingSelection;
-    private bool _synchronizingCategory;
 
     public ScreenViewModel()
     {
-        Categories =
+        ThemeGroups =
         [
-            new ThemeCategoryOptionViewModel("all", "全部"),
-            new ThemeCategoryOptionViewModel("monitor", "监控"),
-            new ThemeCategoryOptionViewModel("time", "时间"),
-            new ThemeCategoryOptionViewModel("info", "资讯"),
-            new ThemeCategoryOptionViewModel("music", "音乐"),
-            new ThemeCategoryOptionViewModel("matrix", "点阵")
+            new ThemeGroupViewModel("monitor", "电脑监控", "电脑状态、性能与网络信息"),
+            new ThemeGroupViewModel("time", "时间与天气", "时间、日期、天气与图片时间"),
+            new ThemeGroupViewModel("info", "资讯与数据", "AI 用量与市场行情"),
+            new ThemeGroupViewModel("music", "音乐播放", "封面、歌词与播放进度"),
+            new ThemeGroupViewModel("matrix", "点阵风格", "适合点阵文字显示的时钟方案")
         ];
-
-        foreach (ThemeCategoryOptionViewModel category in Categories)
-        {
-            category.PropertyChanged += Category_OnPropertyChanged;
-        }
-
-        SelectCategory("all");
     }
 
-    public ObservableCollection<ThemeCategoryOptionViewModel> Categories { get; }
-
-    public ObservableCollection<ThemeCardViewModel> VisibleThemes { get; } = [];
-
-    [ObservableProperty]
-    private string selectedCategory = "all";
+    public ObservableCollection<ThemeGroupViewModel> ThemeGroups { get; }
 
     [ObservableProperty]
     private ThemeCardViewModel? selectedTheme;
@@ -93,14 +94,8 @@ public sealed partial class ScreenViewModel : ObservableObject
             theme.PropertyChanged += Theme_OnPropertyChanged;
         }
 
-        RefreshVisibleThemes();
+        RefreshThemeGroups();
         SelectTheme(selectedThemeId, notify: false);
-    }
-
-    public void SelectCategory(string? categoryId)
-    {
-        SelectedCategory = Categories.FirstOrDefault(category =>
-            string.Equals(category.Id, categoryId, StringComparison.OrdinalIgnoreCase))?.Id ?? "all";
     }
 
     public void SelectTheme(string? themeId, bool notify)
@@ -120,6 +115,7 @@ public sealed partial class ScreenViewModel : ObservableObject
             {
                 theme.IsSelected = ReferenceEquals(theme, selected);
             }
+
             SelectedTheme = selected;
         }
         finally
@@ -143,37 +139,18 @@ public sealed partial class ScreenViewModel : ObservableObject
         double cardWidth = availableWidth >= 400
             ? Math.Max(196, (availableWidth - 44) / 2)
             : Math.Max(196, availableWidth - 12);
-        foreach (ThemeCardViewModel theme in VisibleThemes)
+        foreach (ThemeCardViewModel theme in _allThemes)
         {
             theme.CardWidth = cardWidth;
         }
     }
 
-    partial void OnSelectedCategoryChanged(string value)
+    private void RefreshThemeGroups()
     {
-        _synchronizingCategory = true;
-        try
+        foreach (ThemeGroupViewModel group in ThemeGroups)
         {
-            foreach (ThemeCategoryOptionViewModel category in Categories)
-            {
-                category.IsSelected = string.Equals(category.Id, value, StringComparison.OrdinalIgnoreCase);
-            }
-        }
-        finally
-        {
-            _synchronizingCategory = false;
-        }
-
-        RefreshVisibleThemes();
-    }
-
-    private void RefreshVisibleThemes()
-    {
-        VisibleThemes.Clear();
-        foreach (ThemeCardViewModel theme in _allThemes.Where(theme =>
-                     SelectedCategory == "all" || theme.Definition.CategoryId == SelectedCategory))
-        {
-            VisibleThemes.Add(theme);
+            group.SetThemes(_allThemes.Where(theme =>
+                string.Equals(theme.Definition.CategoryId, group.Id, StringComparison.OrdinalIgnoreCase)));
         }
     }
 
@@ -184,16 +161,6 @@ public sealed partial class ScreenViewModel : ObservableObject
             && sender is ThemeCardViewModel { IsSelected: true } theme)
         {
             SelectTheme(theme.Id, notify: true);
-        }
-    }
-
-    private void Category_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (!_synchronizingCategory
-            && e.PropertyName == nameof(ThemeCategoryOptionViewModel.IsSelected)
-            && sender is ThemeCategoryOptionViewModel { IsSelected: true } category)
-        {
-            SelectCategory(category.Id);
         }
     }
 }

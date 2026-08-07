@@ -92,16 +92,17 @@ internal static class Program
         viewModel.SetThemes(
             definitions.Select(definition => new ThemeCardViewModel(definition, preview: null)),
             "clock");
-        viewModel.SelectCategory("music");
-        Assert(viewModel.VisibleThemes.Count == 5,
-            "screen view model must filter the gallery by the selected category");
+        Assert(viewModel.ThemeGroups.Count == 5
+               && viewModel.ThemeGroups.Single(group => group.Id == "music").Themes.Count == 5
+               && viewModel.ThemeGroups.Sum(group => group.Themes.Count) == definitions.Count,
+            "screen view model must partition every display scheme into its category group");
         viewModel.SelectTheme("music-vinyl", notify: true);
         viewModel.UpdateCardWidth(500);
         Assert(viewModel.SelectedTheme?.Id == "music-vinyl"
                && selectionCount == 1
-               && viewModel.VisibleThemes.All(theme => theme.CardWidth > 196),
-            "screen view model must synchronize selection, event and responsive card width");
-        Console.WriteLine("PASS MVVM screen gallery state and selection");
+               && viewModel.ThemeGroups.SelectMany(group => group.Themes).All(theme => theme.CardWidth > 196),
+            "screen view model must synchronize selection, grouped cards and responsive card width");
+        Console.WriteLine("PASS MVVM screen groups, selection and responsive cards");
     }
 
     private static void VerifyAppearanceViewModel()
@@ -317,34 +318,44 @@ internal static class Program
 		Assert(window.Title == "灵犀68屏幕驱动", $"unexpected product title: {window.Title}");
         var workspace = (Grid)window.FindName("WorkspaceLayout");
         var content = (Grid)window.FindName("ContentLayout");
-		var gallery = (ItemsControl)window.FindName("ThemeListPanel");
-		var categoryList = (ItemsControl)window.FindName("ThemeCategoryList");
+		var themeGroups = (ItemsControl)window.FindName("ThemeGroupPanel");
 		var shell = (ShellViewModel)window.DataContext;
 		var locateCurrent = (Button)window.FindName("LocateCurrentButton");
 		var endpointShortcut = (Button)window.FindName("EndpointShortcutButton");
+		var sidebarNavigation = (StackPanel)window.FindName("SidebarNavigationPanel");
+		var screenNavigation = (RadioButton)window.FindName("ScreenNav");
+		var deviceStatus = (TextBlock)window.FindName("DeviceStatusText");
+		var deviceStatusDot = (System.Windows.Shapes.Ellipse)window.FindName("DeviceStatusDot");
 		window.UpdateLayout();
 		WaitForDispatcher(TimeSpan.FromMilliseconds(50));
         Assert(workspace.ColumnDefinitions[0].Width.Value == 196,
             $"workspace sidebar must be 196px: {workspace.ColumnDefinitions[0].Width.Value}");
         Assert(content.ColumnDefinitions[2].Width.Value == 288,
             $"preview rail must remain 288px: {content.ColumnDefinitions[2].Width.Value}");
-        Assert(gallery.Items.Count == 19,
-            "theme gallery must expose every built-in display scheme");
+		Assert(themeGroups.Items.Count == 5
+		       && shell.Screen.ThemeGroups.Sum(group => group.Themes.Count) == 19,
+			"display schemes must be visibly partitioned into five category sections");
+		Assert(window.FindName("ThemeListPanel") is null && window.FindName("ThemeCategoryList") is null,
+			"the old mixed gallery and subtle category filter must no longer be used");
+		Assert(sidebarNavigation.Children.Count == 5
+		       && screenNavigation.FontSize == 15,
+			"sidebar navigation must omit the redundant workspace heading and improve text legibility");
+		Assert(deviceStatus.Text == "设备离线"
+		       && deviceStatus.FontSize == 14
+		       && deviceStatus.Foreground == deviceStatusDot.Fill,
+			"device status must start as a clear offline state with a matching status indicator");
 		Assert(locateCurrent.Visibility == Visibility.Visible && Equals(locateCurrent.Content, "定位当前"),
 			"display page must expose a single locate-current action instead of mode tabs");
-		Assert(categoryList.Items.Count == 6, "theme category choices must be supplied by the screen view model");
-		shell.Screen.Categories.Single(item => item.Id == "music").IsSelected = true;
-		Assert(gallery.Items.Count == 5, "music category must narrow the gallery before locate-current");
 		locateCurrent.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 		WaitForDispatcher(TimeSpan.FromMilliseconds(50));
-		Assert(gallery.Items.Count == 19 && shell.Screen.SelectedTheme?.IsSelected == true,
-			"locate-current must restore all schemes and select the active card");
+		Assert(shell.Screen.SelectedTheme?.IsSelected == true,
+			"locate-current must find the active card inside its category section");
 		endpointShortcut.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 		WaitForDispatcher(TimeSpan.FromMilliseconds(50));
 		Assert(shell.IsSettingsPage && endpointShortcut.ToolTip?.ToString()?.Contains("设置") == true,
 			"clicking the device-address shortcut must open the settings page");
 		window.Close();
-		Console.WriteLine("PASS compact sidebar, working locate-current action, 19-card gallery and fixed preview rail");
+		Console.WriteLine("PASS compact sidebar, grouped display schemes, locate-current action and fixed preview rail");
     }
 
     private static void VerifyFeatureNoticeGeometry()
