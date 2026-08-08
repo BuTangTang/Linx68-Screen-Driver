@@ -68,11 +68,21 @@ Assert(NetEaseWindowTitleParser.TryParse("Payphone - Maroon 5/Wiz Khalifa", out 
     "NetEase window title must provide fallback track metadata when no Windows media session exists");
 Assert(!NetEaseWindowTitleParser.TryParse("网易云音乐", out _, out _),
     "NetEase application title must not be treated as a track");
+var netEaseWindowClock = new NetEaseWindowPlaybackClock();
+TimeSpan firstFallbackPosition = netEaseWindowClock.GetPosition("Demo Track", "Demo Artist");
+await Task.Delay(30);
+TimeSpan advancedFallbackPosition = netEaseWindowClock.GetPosition("Demo Track", "Demo Artist");
+TimeSpan changedTrackPosition = netEaseWindowClock.GetPosition("Next Track", "Demo Artist");
+Assert(advancedFallbackPosition > firstFallbackPosition && changedTrackPosition < advancedFallbackPosition,
+    "NetEase fallback playback clock must advance monotonically and reset only when the track changes");
 Console.WriteLine("PASS Windows media session ordering and NetEase identifiers");
 
 if (args.Contains("--music-probe", StringComparer.OrdinalIgnoreCase))
 {
-    var liveMusic = await new WindowsMusicSnapshotSource().ReadAsync();
+    var liveSource = new WindowsMusicSnapshotSource();
+    var initialMusic = await liveSource.ReadAsync();
+    await Task.Delay(TimeSpan.FromSeconds(2));
+    var liveMusic = await liveSource.ReadAsync();
     if (liveMusic.Available && WindowsMusicSessionSelector.IsNetEase(liveMusic.SourceAppId))
     {
         using var enricher = new NetEaseMusicSnapshotEnricher();
@@ -83,7 +93,7 @@ if (args.Contains("--music-probe", StringComparer.OrdinalIgnoreCase))
     }
     Console.WriteLine(liveMusic is null || !liveMusic.Available
         ? "PROBE music session: unavailable"
-        : $"PROBE music session: source={liveMusic.SourceAppId}; playing={liveMusic.IsPlaying}; title={liveMusic.Title}; artist={liveMusic.Artist}; position={liveMusic.Position:c}; duration={liveMusic.Duration:c}; artwork={liveMusic.Artwork is { Length: > 0 }}; lyrics={liveMusic.Lyrics.Available}; lyric-lines={liveMusic.Lyrics.Lines.Count}");
+        : $"PROBE music session: source={liveMusic.SourceAppId}; playing={liveMusic.IsPlaying}; title={liveMusic.Title}; artist={liveMusic.Artist}; position={liveMusic.Position:c}; duration={liveMusic.Duration:c}; position-advanced={liveMusic.Position > initialMusic.Position}; artwork={liveMusic.Artwork is { Length: > 0 }}; lyrics={liveMusic.Lyrics.Available}; lyric-lines={liveMusic.Lyrics.Lines.Count}");
 }
 
 var profile = ScreenProfile.KeyboardDisplay;
@@ -93,7 +103,7 @@ Assert(profile.SafeArea.Top + profile.SafeArea.Bottom < profile.Height, "safe ar
 var renderer = new ScreenRenderer(profile);
 var themeDefinitions = BuiltInThemes.CreateDefinitions(new ImageTheme());
 var themes = themeDefinitions.Select(definition => definition.Theme).ToArray();
-Assert(themes.Length == 18, "built-in theme catalog should contain the 18 supported schemes");
+Assert(themes.Length == 15, "built-in theme catalog should contain the 15 supported schemes");
 Assert(themes.All(theme => theme.Id is not "calendar" and not "ambient"), "removed calendar/ambient themes must not be registered");
 Assert(themes.All(theme => theme.Id != "clock-seconds"), "removed seconds progress theme must not be registered");
 Assert(themes.All(theme => theme.Id != "week"), "removed week calendar theme must not be registered");
@@ -105,14 +115,16 @@ Assert(themes.Any(theme => theme.Id == "weather-five-day"), "five-day weather th
 Assert(themes.Any(theme => theme.Id == "stocks"), "stock theme must be registered");
 Assert(themes.Where(theme => theme.Id.StartsWith("music", StringComparison.OrdinalIgnoreCase)).Select(theme => theme.Id)
            .OrderBy(id => id)
-           .SequenceEqual(["music", "music-cover-focus", "music-lyric-focus", "music-pulse"])
+           .SequenceEqual(["music"])
        && themes.All(theme => theme.Id is not "music-vinyl" and not "music-cassette" and not "music-minimal" and not "music-poster"),
-    "the music catalog must contain only the redesigned presentation variants");
+    "the music catalog must contain only the confirmed cover-and-lyrics presentation");
 Assert(themes.Select(theme => theme.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() == themes.Length, "theme ids should be unique");
 Assert(themeDefinitions.All(definition => definition.Category != ThemeCategory.Other), "every built-in theme must declare a category");
 Assert(themeDefinitions.Single(definition => definition.Id == "image").IsStatic, "image theme must declare static rendering");
 Assert(themeDefinitions.Single(definition => definition.Id == "weather-five-day").Requires(ThemeDataRequirements.Weather), "weather theme must declare its data requirement");
 Assert(themeDefinitions.Single(definition => definition.Id == "music").Requires(ThemeDataRequirements.Lyrics), "music theme must declare its optional lyrics requirement");
+Assert(themes.Single(theme => theme.Id == "music").Description == "封面与连续同步歌词",
+    "the single music card must use a compact, non-wrapping description");
 Assert(themeDefinitions.Where(definition => definition.Category == ThemeCategory.Music)
            .All(definition => definition.Requires(ThemeDataRequirements.Music | ThemeDataRequirements.Lyrics)),
     "all music presentation variants must request media and lyrics data");
@@ -202,6 +214,14 @@ Assert(refreshResult.EffectiveTheme.Id == "music" && refreshResult.EffectiveThem
     "refresh service must switch to the music theme while media is playing");
 Assert(refreshLyrics.ReadCount == 1 && refreshWeatherResolver.ReadCount == 0,
     "refresh service must request only the metadata-required sources");
+
+refreshResult = await refreshService.RefreshAsync(new DashboardRefreshRequest(
+    themeDefinitions,
+    refreshSettings,
+    "music-lyric-focus",
+    refreshResult.EffectiveTheme.Id));
+Assert(refreshResult.EffectiveTheme.Id == "music",
+    "a saved legacy music presentation must migrate to the confirmed cover-and-lyrics theme");
 
 refreshSettings.AutoSwitchToMusic = false;
 int aiReadCount = 0;
@@ -296,12 +316,14 @@ if (args.Contains("--codex-rate-probe", StringComparer.OrdinalIgnoreCase))
 }
 
 var subscriptionQuota = AiQuotaSnapshot.ForSubscription(
-    "ChatGPT",
+    "Codex",
     56,
     remainingCount: 1,
     resetPeriod: AiResetPeriod.Weekly);
 Assert(subscriptionQuota.RemainingDisplay == "56% / 1次", "subscription quota display is incorrect");
 Assert(subscriptionQuota.ResetPeriod == AiResetPeriod.Weekly, "subscription reset period was not retained");
+Assert(SystemSnapshot.DesignSample.AiQuota?.PlatformName == "Codex",
+    "the default device-preview sample must use the confirmed Codex label");
 
 var tokenBalance = new AiQuotaBalance(
     AiQuotaMetric.Token,
@@ -327,10 +349,137 @@ foreach (var theme in themes)
     Console.WriteLine($"PASS render {theme.Id,-8} {frame.JpegBytes.Length,7} bytes, baseline JPEG 142x428");
 }
 
+var longTitleFrame = renderer.Render(
+    themes.Single(theme => theme.Id == "music"),
+    SystemSnapshot.DesignSample with
+    {
+        Music = SystemSnapshot.DesignSample.Music! with
+        {
+            Title = "一首很甜的歌，刚好在夜晚想起你"
+        }
+    });
+Assert(longTitleFrame.Width == 142 && longTitleFrame.Height == 428
+       && longTitleFrame.JpegBytes.Length <= profile.MaxJpegBytes
+       && longTitleFrame.JpegBytes is [0xFF, 0xD8, ..]
+       && !longTitleFrame.JpegBytes.SequenceEqual(renderer.Render(themes.Single(theme => theme.Id == "music"), SystemSnapshot.DesignSample).JpegBytes),
+    "long music titles must render a distinct device-compatible frame");
+Console.WriteLine("PASS long music title renders within the device frame");
+
+int musicPreviewArgumentIndex = Array.IndexOf(args, "--music-preview");
+if (musicPreviewArgumentIndex >= 0)
+{
+    Assert(musicPreviewArgumentIndex + 1 < args.Length, "--music-preview requires an output path");
+    var liveMusicSource = new WindowsMusicSnapshotSource();
+    var liveMusic = await liveMusicSource.ReadAsync();
+    Assert(liveMusic.Available && !string.IsNullOrWhiteSpace(liveMusic.Title),
+        "live music preview requires an available media session with a track title");
+
+    if (WindowsMusicSessionSelector.IsNetEase(liveMusic.SourceAppId))
+    {
+        using var enricher = new NetEaseMusicSnapshotEnricher();
+        liveMusic = await enricher.EnrichAsync(liveMusic);
+        using var fallback = new LrcLibLyricsSnapshotSource();
+        using var lyricsSource = new NetEaseLyricsSnapshotSource(fallback);
+        liveMusic = liveMusic with { Lyrics = await lyricsSource.ReadAsync(liveMusic) };
+        Assert(liveMusic.Artwork is { Length: > 0 } && liveMusic.Lyrics.Available && liveMusic.Lyrics.Lines.Count > 0,
+            "NetEase live music preview requires artwork and synchronized lyrics");
+    }
+
+    var liveMusicFrame = renderer.Render(
+        themes.Single(theme => theme.Id == "music"),
+        SystemSnapshot.DesignSample with { Music = liveMusic });
+    Assert(liveMusicFrame.Width == 142 && liveMusicFrame.Height == 428
+           && liveMusicFrame.JpegBytes.Length <= profile.MaxJpegBytes
+           && liveMusicFrame.JpegBytes is [0xFF, 0xD8, ..],
+        "live music preview must render a device-compatible JPEG");
+
+    var previewPath = Path.GetFullPath(args[musicPreviewArgumentIndex + 1]);
+    Directory.CreateDirectory(Path.GetDirectoryName(previewPath)!);
+    await File.WriteAllBytesAsync(previewPath, liveMusicFrame.JpegBytes);
+    Assert(File.Exists(previewPath) && new FileInfo(previewPath).Length == liveMusicFrame.JpegBytes.Length,
+        "live music preview file was not written completely");
+    Console.WriteLine($"PASS wrote live music preview to {previewPath}");
+}
+
+int musicMotionPreviewArgumentIndex = Array.IndexOf(args, "--music-motion-preview");
+if (musicMotionPreviewArgumentIndex >= 0)
+{
+    Assert(musicMotionPreviewArgumentIndex + 1 < args.Length, "--music-motion-preview requires an output directory");
+    var liveMusicSource = new WindowsMusicSnapshotSource();
+    var initial = await liveMusicSource.ReadAsync();
+    Assert(initial.Available && initial.IsPlaying && !string.IsNullOrWhiteSpace(initial.Title),
+        "live music motion preview requires an actively playing media session");
+    MusicSnapshot enrichedInitial = initial;
+    LyricsSnapshot? synchronizedLyrics = null;
+    if (WindowsMusicSessionSelector.IsNetEase(initial.SourceAppId))
+    {
+        using var enricher = new NetEaseMusicSnapshotEnricher();
+        enrichedInitial = await enricher.EnrichAsync(initial);
+        using var fallback = new LrcLibLyricsSnapshotSource();
+        using var lyricsSource = new NetEaseLyricsSnapshotSource(fallback);
+        synchronizedLyrics = await lyricsSource.ReadAsync(enrichedInitial);
+        Assert(enrichedInitial.Artwork is { Length: > 0 } && synchronizedLyrics.Available && synchronizedLyrics.Lines.Count > 0,
+            "NetEase live music motion preview requires artwork and synchronized lyrics");
+    }
+
+    TimeSpan firstLyricTime = synchronizedLyrics?.Lines[0].Timestamp ?? TimeSpan.Zero;
+    double warmupSeconds = Math.Clamp((firstLyricTime - initial.Position).TotalSeconds + 1, 6, 60);
+    await Task.Delay(TimeSpan.FromSeconds(warmupSeconds));
+    var before = await liveMusicSource.ReadAsync();
+    Assert(before.Available && string.Equals(initial.Title, before.Title, StringComparison.Ordinal)
+           && before.Position > initial.Position,
+        "live music motion preview requires the track to advance past its opening preview state");
+    await Task.Delay(TimeSpan.FromSeconds(4));
+    var after = await liveMusicSource.ReadAsync();
+    Assert(after.Available && string.Equals(before.Title, after.Title, StringComparison.Ordinal)
+           && after.Position > before.Position,
+        "live music motion preview requires the same track to advance");
+
+    if (synchronizedLyrics is not null)
+    {
+        before = before with
+        {
+            Artwork = enrichedInitial.Artwork,
+            ProviderTrackId = enrichedInitial.ProviderTrackId,
+            AlbumTitle = enrichedInitial.AlbumTitle,
+            Lyrics = synchronizedLyrics
+        };
+        after = after with
+        {
+            Artwork = enrichedInitial.Artwork,
+            ProviderTrackId = enrichedInitial.ProviderTrackId,
+            AlbumTitle = enrichedInitial.AlbumTitle,
+            Lyrics = synchronizedLyrics
+        };
+    }
+
+    var musicThemeForMotion = themes.Single(theme => theme.Id == "music");
+    var beforeFrame = renderer.Render(musicThemeForMotion, SystemSnapshot.DesignSample with { Music = before });
+    var afterFrame = renderer.Render(musicThemeForMotion, SystemSnapshot.DesignSample with { Music = after });
+    Assert(!beforeFrame.JpegBytes.SequenceEqual(afterFrame.JpegBytes),
+        "live music motion preview frames must change as the active track advances");
+
+    string outputDirectory = Path.GetFullPath(args[musicMotionPreviewArgumentIndex + 1]);
+    Directory.CreateDirectory(outputDirectory);
+    string beforePath = Path.Combine(outputDirectory, "music-live-before.jpg");
+    string afterPath = Path.Combine(outputDirectory, "music-live-after.jpg");
+    await File.WriteAllBytesAsync(beforePath, beforeFrame.JpegBytes);
+    await File.WriteAllBytesAsync(afterPath, afterFrame.JpegBytes);
+    var beforeContext = before.Lyrics.FindContextAt(before.Position);
+    var afterContext = after.Lyrics.FindContextAt(after.Position);
+    Console.WriteLine($"PASS wrote live music motion previews after {warmupSeconds:0.0}s at {before.Position:c} ({beforeContext.Current?.Text ?? "即将开始"}) and {after.Position:c} ({afterContext.Current?.Text ?? "即将开始"}) to {outputDirectory}");
+}
+
 var subscriptionFrame = renderer.Render(
     aiQuotaTheme,
     SystemSnapshot.DesignSample with { AiQuota = subscriptionQuota });
 Assert(subscriptionFrame.JpegBytes is [0xFF, 0xD8, ..], "subscription AI quota theme did not render");
+
+var alternatePlatformFrame = renderer.Render(
+    aiQuotaTheme,
+    SystemSnapshot.DesignSample with { AiQuota = subscriptionQuota with { PlatformName = "MiMo" } });
+Assert(!subscriptionFrame.JpegBytes.SequenceEqual(alternatePlatformFrame.JpegBytes),
+    "the quota device frame must render its current platform label instead of a hard-coded Codex name");
 
 var apiKeyFrame = renderer.Render(
     aiQuotaTheme,
@@ -345,6 +494,14 @@ Assert(timedLyrics[1].Text == "第二行", "Unicode lyric text was not retained"
 var lyricSnapshot = new LyricsSnapshot(true, timedLyrics);
 var lyricPosition = lyricSnapshot.FindAt(TimeSpan.FromSeconds(2));
 Assert(lyricPosition.Current?.Text == "First line" && lyricPosition.Next?.Text == "第二行", "active lyric lookup failed");
+var lyricContext = new LyricsSnapshot(true,
+[
+    new LyricLine(TimeSpan.Zero, "上一句"),
+    new LyricLine(TimeSpan.FromSeconds(2), "当前句"),
+    new LyricLine(TimeSpan.FromSeconds(4), "下一句")
+]).FindContextAt(TimeSpan.FromSeconds(3));
+Assert(lyricContext.Previous?.Text == "上一句" && lyricContext.Current?.Text == "当前句" && lyricContext.Next?.Text == "下一句",
+    "lyric context lookup must include the previous, current and next lines");
 Console.WriteLine("PASS LRCLIB synchronized lyrics parser and active-line lookup");
 
 var lyricResponses = new Queue<string>(new[]
@@ -384,15 +541,18 @@ using (var netEaseEnricher = new NetEaseMusicSnapshotEnricher(netEaseSearchClien
 
     var netEaseLyricResponses = new Queue<string>(new[]
     {
-        """{"lrc":{"lyric":"[00:01.20] First line\n[00:03.45] Second line"}}"""
+        """{"lrc":{"lyric":"[00:00.00]作词：Demo Writer\n[00:00.20]作曲: Demo Composer\n[00:00.40]人声处理：Demo Vocal\n[00:01.20] First line\n[00:03.45] Second line\n[00:05.00]作词：这是正式歌词"}}"""
     });
     var netEaseLyricHandler = new SequenceHandler(netEaseLyricResponses);
     using var netEaseLyricClient = new HttpClient(netEaseLyricHandler);
     using var netEaseFallback = new LrcLibLyricsSnapshotSource();
     using var netEaseLyrics = new NetEaseLyricsSnapshotSource(netEaseFallback, netEaseLyricClient);
     var netEaseSnapshot = await netEaseLyrics.ReadAsync(enrichedMusic);
-    Assert(netEaseSnapshot.Available && netEaseSnapshot.Lines.Count == 2 && netEaseLyricHandler.RequestCount == 1,
-        "NetEase lyrics must use the resolved song ID and parse timed lines");
+    Assert(netEaseSnapshot.Available && netEaseSnapshot.Lines.Count == 3
+           && netEaseSnapshot.Lines[0].Text == "First line"
+           && netEaseSnapshot.Lines[2].Text == "作词：这是正式歌词"
+           && netEaseLyricHandler.RequestCount == 1,
+        "NetEase lyrics must remove only leading credits while preserving timed lyrics");
 }
 Console.WriteLine("PASS NetEase metadata resolution and timed lyrics");
 
@@ -412,7 +572,88 @@ var musicFrameB = renderer.Render(musicTheme, SystemSnapshot.DesignSample with
     Music = animatedMusic with { Lyrics = new LyricsSnapshot(true, [new LyricLine(TimeSpan.Zero, "第二句歌词")]) }
 });
 Assert(!musicFrameA.JpegBytes.SequenceEqual(musicFrameB.JpegBytes), "music theme must render the current lyric below the progress bar");
-Console.WriteLine("PASS cover music theme renders the current lyric");
+var firstLyricPreview = renderer.Render(musicTheme, SystemSnapshot.DesignSample with
+{
+    Music = animatedMusic with
+    {
+        Position = TimeSpan.Zero,
+        Lyrics = new LyricsSnapshot(true, [new LyricLine(TimeSpan.FromSeconds(5), "首句即将开始")])
+    }
+});
+var unavailableLyricsPreview = renderer.Render(musicTheme, SystemSnapshot.DesignSample with
+{
+    Music = animatedMusic with { Position = TimeSpan.Zero, Lyrics = LyricsSnapshot.Unavailable }
+});
+Assert(firstLyricPreview.JpegBytes.Length <= profile.MaxJpegBytes
+       && !firstLyricPreview.JpegBytes.SequenceEqual(unavailableLyricsPreview.JpegBytes),
+    "music theme must show a distinct first-lyric preview before its timestamp");
+var timedMusicLyrics = new LyricsSnapshot(true,
+[
+    new LyricLine(TimeSpan.Zero, "第一句歌词"),
+    new LyricLine(TimeSpan.FromSeconds(5), "第二句歌词"),
+    new LyricLine(TimeSpan.FromSeconds(10), "第三句歌词")
+]);
+var positionFrameA = renderer.Render(musicTheme, SystemSnapshot.DesignSample with
+{
+    Music = animatedMusic with { Position = TimeSpan.FromSeconds(1), Lyrics = timedMusicLyrics }
+});
+var positionFrameB = renderer.Render(musicTheme, SystemSnapshot.DesignSample with
+{
+    Music = animatedMusic with { Position = TimeSpan.FromSeconds(6), Lyrics = timedMusicLyrics }
+});
+Assert(!positionFrameA.JpegBytes.SequenceEqual(positionFrameB.JpegBytes),
+    "music theme must render a new lyric frame after playback crosses the next lyric timestamp");
+var lyricMotionMusic = animatedMusic with
+{
+    Duration = TimeSpan.Zero,
+    Lyrics = timedMusicLyrics
+};
+var lyricMotionFrameA = renderer.Render(musicTheme, SystemSnapshot.DesignSample with
+{
+    Music = lyricMotionMusic with { Position = TimeSpan.FromSeconds(6.1) }
+});
+var lyricMotionFrameB = renderer.Render(musicTheme, SystemSnapshot.DesignSample with
+{
+    Music = lyricMotionMusic with { Position = TimeSpan.FromSeconds(6.7) }
+});
+Assert(!lyricMotionFrameA.JpegBytes.SequenceEqual(lyricMotionFrameB.JpegBytes),
+    "music theme must animate the lyric activity indicator within the same lyric line");
+var continuousLyricsFrame = renderer.Render(musicTheme, SystemSnapshot.DesignSample with
+{
+    Music = animatedMusic with
+    {
+        Position = TimeSpan.FromSeconds(6),
+        Lyrics = new LyricsSnapshot(true,
+        [
+            new LyricLine(TimeSpan.Zero, "上一句同步歌词"),
+            new LyricLine(TimeSpan.FromSeconds(5), "这一句很长，会在音乐屏幕中稳定换成两行显示"),
+            new LyricLine(TimeSpan.FromSeconds(10), "下一句同步歌词")
+        ])
+    }
+});
+var noArtworkFrame = renderer.Render(musicTheme, SystemSnapshot.DesignSample with
+{
+    Music = animatedMusic with { Artwork = null, Position = TimeSpan.FromSeconds(6), Lyrics = timedMusicLyrics }
+});
+var invalidArtworkFrame = renderer.Render(musicTheme, SystemSnapshot.DesignSample with
+{
+    Music = animatedMusic with { Artwork = [0x00, 0x01, 0x02], Position = TimeSpan.FromSeconds(6), Lyrics = timedMusicLyrics }
+});
+Assert(continuousLyricsFrame.JpegBytes.Length <= profile.MaxJpegBytes
+       && noArtworkFrame.JpegBytes.SequenceEqual(invalidArtworkFrame.JpegBytes),
+    "continuous lyrics and invalid artwork fallback must render stable device frames");
+int musicDesignPreviewArgumentIndex = Array.IndexOf(args, "--music-design-preview");
+if (musicDesignPreviewArgumentIndex >= 0)
+{
+    Assert(musicDesignPreviewArgumentIndex + 1 < args.Length, "--music-design-preview requires an output path");
+    var previewPath = Path.GetFullPath(args[musicDesignPreviewArgumentIndex + 1]);
+    Directory.CreateDirectory(Path.GetDirectoryName(previewPath)!);
+    await File.WriteAllBytesAsync(previewPath, continuousLyricsFrame.JpegBytes);
+    Assert(File.Exists(previewPath) && new FileInfo(previewPath).Length == continuousLyricsFrame.JpegBytes.Length,
+        "music design preview file was not written completely");
+    Console.WriteLine($"PASS wrote continuous-lyrics design preview to {previewPath}");
+}
+Console.WriteLine("PASS cover music theme renders continuous lyrics and stable artwork fallback");
 
 var weatherResponses = new Queue<string>(new[]
 {

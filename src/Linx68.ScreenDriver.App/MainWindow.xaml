@@ -141,7 +141,10 @@
                                                                      Width="{Binding CardWidth}" IsChecked="{Binding IsSelected, Mode=TwoWay}">
                                                             <StackPanel>
                                                                 <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                                                <TextBlock Text="{Binding Description}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" Foreground="{DynamicResource SecondaryText}" />
+                                                                <TextBlock Text="{Binding Description}" FontSize="11" TextWrapping="Wrap" MaxHeight="32" Margin="0,4,0,0" Foreground="{DynamicResource SecondaryText}" />
+                                                                <Border Background="{DynamicResource Surface.Control}" BorderBrush="{DynamicResource Stroke.Default}" BorderThickness="1" CornerRadius="7" Padding="7,3" Margin="0,9,0,0" HorizontalAlignment="Left">
+                                                                    <TextBlock Text="{Binding Metadata}" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}" />
+                                                                </Border>
                                                             </StackPanel>
                                                         </RadioButton>
                                                     </DataTemplate>
@@ -495,14 +498,14 @@
                                             </Grid>
                                         </Border>
                                         <Border x:Name="AutoMusicCard" Style="{StaticResource SectionCard}">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                                <StackPanel>
-                                                    <TextBlock Text="播放音乐时自动切换" FontSize="15" FontWeight="SemiBold" />
-                                                    <TextBlock Text="检测到媒体播放时显示音乐页；手动选择其它方案会自动关闭此项。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0" />
-                                                </StackPanel>
-                                                <CheckBox x:Name="AutoMusicCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Automation.AutoSwitchToMusic, Mode=TwoWay}" />
-                                            </Grid>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                    <StackPanel>
+                                                        <TextBlock Text="播放音乐时自动切换" FontSize="15" FontWeight="SemiBold" />
+                                                        <TextBlock x:Name="AutoMusicDescription" Text="检测到媒体播放时显示封面歌词；手动选择其它方案会自动关闭此项。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0" />
+                                                    </StackPanel>
+                                                    <CheckBox x:Name="AutoMusicCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Automation.AutoSwitchToMusic, Mode=TwoWay}" />
+                                                </Grid>
                                         </Border>
                                     </StackPanel>
 
@@ -653,7 +656,7 @@
 
                             <Border Grid.Column="2" Style="{StaticResource PreviewCard}" Padding="20">
                                 <Grid>
-                                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                     <Grid>
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                         <TextBlock Text="预览" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
@@ -661,7 +664,17 @@
                                             <TextBlock x:Name="PreviewStatusText" Text="本地预览" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}" />
                                         </Border>
                                     </Grid>
-                                    <local:DevicePreviewControl x:Name="DevicePreview" Grid.Row="1" VerticalAlignment="Center" />
+                                    <Viewbox x:Name="DevicePreviewHost" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                                             Stretch="Uniform" StretchDirection="DownOnly">
+                                        <local:DevicePreviewControl x:Name="DevicePreview" />
+                                    </Viewbox>
+                                    <Border x:Name="PreviewThemeSummary" Grid.Row="2" Background="{DynamicResource Surface.Control}" BorderBrush="{DynamicResource Stroke.Default}" BorderThickness="1" CornerRadius="10" Padding="11" Margin="0,14,0,0">
+                                        <StackPanel>
+                                            <TextBlock Text="当前方案" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}" />
+                                            <TextBlock Text="{Binding Screen.SelectedTheme.DisplayName}" FontSize="13" FontWeight="SemiBold" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Screen.SelectedTheme.Description}" FontSize="10" Foreground="{DynamicResource SecondaryText}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Border>
                                 </Grid>
                             </Border>
                         </Grid>

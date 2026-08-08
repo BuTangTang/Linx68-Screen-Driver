@@ -38,11 +38,34 @@ internal static class WindowsMusicSessionSelector
     }
 }
 
+internal sealed class NetEaseWindowPlaybackClock
+{
+    private readonly Stopwatch _stopwatch = new();
+    private string? _trackKey;
+
+    public TimeSpan GetPosition(string title, string artist)
+    {
+        string trackKey = $"{title}\n{artist}";
+        if (!string.Equals(_trackKey, trackKey, StringComparison.Ordinal))
+        {
+            _trackKey = trackKey;
+            _stopwatch.Restart();
+        }
+
+        return _stopwatch.Elapsed;
+    }
+
+    public void Reset()
+    {
+        _trackKey = null;
+        _stopwatch.Reset();
+    }
+}
+
 public sealed class WindowsMusicSnapshotSource : IMusicSnapshotSource
 {
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
-    private string? _netEaseWindowTrackKey;
-    private DateTimeOffset _netEaseWindowTrackStartedAt;
+    private readonly NetEaseWindowPlaybackClock _netEaseWindowPlaybackClock = new();
 
     public async ValueTask<MusicSnapshot> ReadAsync(CancellationToken cancellationToken = default)
     {
@@ -100,18 +123,11 @@ public sealed class WindowsMusicSnapshotSource : IMusicSnapshotSource
                         continue;
                     }
 
-                    string trackKey = $"{title}\n{artist}";
-                    if (!string.Equals(_netEaseWindowTrackKey, trackKey, StringComparison.Ordinal))
-                    {
-                        _netEaseWindowTrackKey = trackKey;
-                        _netEaseWindowTrackStartedAt = DateTimeOffset.UtcNow;
-                    }
-
                     return new MusicSnapshot(
                         Available: true,
                         title,
                         artist,
-                        Position: DateTimeOffset.UtcNow - _netEaseWindowTrackStartedAt,
+                        Position: _netEaseWindowPlaybackClock.GetPosition(title, artist),
                         Duration: TimeSpan.Zero,
                         IsPlaying: true,
                         Artwork: null)
@@ -126,7 +142,7 @@ public sealed class WindowsMusicSnapshotSource : IMusicSnapshotSource
             }
         }
 
-        _netEaseWindowTrackKey = null;
+		_netEaseWindowPlaybackClock.Reset();
         return null;
     }
 

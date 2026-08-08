@@ -15,11 +15,14 @@ public sealed class AiQuotaTheme : IScreenTheme
         var quota = snapshot.AiQuota ?? AiQuotaSnapshot.Empty;
         var safe = canvas.SafeBounds;
         var percent = quota.Available ? quota.ClampedRemainingPercent : 0d;
+        var platformName = !string.IsNullOrWhiteSpace(quota.PlatformName)
+            ? quota.PlatformName.Trim()
+            : "AI";
 
         canvas.Fill(Color.FromRgb(6, 9, 13));
 
         canvas.Text(
-            "AI 用量",
+            $"{platformName} 额度",
             8.5,
             Color.FromRgb(108, 121, 136),
             new Point(safe.Left, safe.Top + 7),
@@ -73,9 +76,6 @@ public sealed class AiQuotaTheme : IScreenTheme
             }
         }
 
-        var platformName = !string.IsNullOrWhiteSpace(quota.PlatformName)
-            ? quota.PlatformName.Trim()
-            : "AI";
         canvas.Text(
             platformName,
             15,

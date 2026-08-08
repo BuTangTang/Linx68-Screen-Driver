@@ -20,10 +20,12 @@ public sealed class DashboardRefreshService(
         }
 
         MusicSnapshot sourceMusic = await musicSource.ReadAsync(cancellationToken);
-        ThemeDefinition selectedTheme = FindTheme(request.Themes, request.SelectedThemeId)
+        ThemeDefinition selectedTheme = FindTheme(request.Themes, BuiltInThemes.NormalizeThemeId(request.SelectedThemeId))
             ?? request.Themes[0];
         bool mediaIsPlaying = sourceMusic.Available && sourceMusic.IsPlaying;
-        ThemeDefinition effectiveTheme = request.Settings.AutoSwitchToMusic && mediaIsPlaying
+        ThemeDefinition effectiveTheme = request.Settings.AutoSwitchToMusic
+            && mediaIsPlaying
+            && selectedTheme.Category != ThemeCategory.Music
             ? FindTheme(request.Themes, "music") ?? selectedTheme
             : selectedTheme;
 

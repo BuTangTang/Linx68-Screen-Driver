@@ -26,7 +26,7 @@ public sealed record SystemSnapshot(
             IsPlaying: true,
             null),
         AiQuotaSnapshot.ForSubscription(
-            "ChatGPT",
+            "Codex",
             56,
             remainingCount: 1,
             resetPeriod: AiResetPeriod.Weekly),

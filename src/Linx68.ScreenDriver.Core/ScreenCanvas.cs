@@ -47,6 +47,13 @@ public sealed class ScreenCanvas
 		_drawing.DrawRoundedRectangle(new SolidColorBrush(fill), pen, rect, radius, radius);
 	}
 
+	public void RoundedGradientRect(Rect rect, double radius, Color start, Color end, Color? stroke = null, double strokeWidth = 1.0)
+	{
+		Pen? pen = stroke.HasValue ? new Pen(new SolidColorBrush(stroke.Value), strokeWidth) : null;
+		LinearGradientBrush brush = new LinearGradientBrush(start, end, new Point(0, 0), new Point(1, 1));
+		_drawing.DrawRoundedRectangle(brush, pen, rect, radius, radius);
+	}
+
 	public void Ellipse(Rect rect, Color fill, Color? stroke = null, double strokeWidth = 1.0)
 	{
 		Pen? pen = stroke.HasValue ? new Pen(new SolidColorBrush(stroke.Value), strokeWidth) : null;
@@ -67,6 +74,55 @@ public sealed class ScreenCanvas
 			formattedText.Trimming = TextTrimming.CharacterEllipsis;
 		}
 		_drawing.DrawText(formattedText, origin);
+	}
+
+	public void FittedText(string value, double preferredSize, double minimumSize, Color color, Point origin, FontWeight? weight = null, TextAlignment alignment = TextAlignment.Left, double maxWidth = double.PositiveInfinity, double maxHeight = double.PositiveInfinity)
+	{
+		double size = preferredSize;
+		if (!double.IsPositiveInfinity(maxWidth))
+		{
+			while (size > minimumSize)
+			{
+				FormattedText formattedText = new FormattedText(value, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily, FontStyles.Normal, weight ?? FontWeights.Normal, FontStretches.Normal), size, Brushes.Transparent, 1.0);
+				if (formattedText.WidthIncludingTrailingWhitespace <= maxWidth)
+				{
+					break;
+				}
+
+				size -= 0.5;
+			}
+		}
+
+		Text(value, Math.Max(minimumSize, size), color, origin, weight, alignment, maxWidth, maxHeight);
+	}
+
+	public void WrappedText(string value, double size, Color color, Point origin, FontWeight? weight, TextAlignment alignment, double maxWidth, int maxLines, double lineHeight)
+	{
+		if (string.IsNullOrEmpty(value) || maxWidth <= 0 || maxLines <= 0)
+		{
+			return;
+		}
+
+		List<string> lines = new();
+		int start = 0;
+		while (start < value.Length && lines.Count < maxLines)
+		{
+			int end = FindLineBreak(value, start, size, weight, maxWidth);
+			bool isLastVisibleLine = lines.Count == maxLines - 1;
+			if (isLastVisibleLine && end < value.Length)
+			{
+				lines.Add(Ellipsize(value[start..], size, weight, maxWidth));
+				break;
+			}
+
+			lines.Add(value[start..end]);
+			start = end;
+		}
+
+		for (int index = 0; index < lines.Count; index++)
+		{
+			Text(lines[index], size, color, new Point(origin.X, origin.Y + index * lineHeight), weight, alignment, maxWidth);
+		}
 	}
 
 	public void CenteredText(string value, double size, Color color, Rect bounds, FontWeight? weight = null)
@@ -129,6 +185,19 @@ public sealed class ScreenCanvas
 		_drawing.DrawRoundedRectangle(brush, null, rect, radius, radius);
 	}
 
+	public bool TryImage(byte[] bytes, Rect rect, double radius = 0.0)
+	{
+		try
+		{
+			Image(bytes, rect, radius);
+			return true;
+		}
+		catch (Exception)
+		{
+			return false;
+		}
+	}
+
 	public void CircularImage(byte[] bytes, Rect rect, double rotationDegrees = 0.0)
 	{
 		using MemoryStream streamSource = new MemoryStream(bytes);
@@ -146,5 +215,64 @@ public sealed class ScreenCanvas
 			RelativeTransform = new RotateTransform(rotationDegrees, 0.5, 0.5)
 		};
 		_drawing.DrawEllipse(brush, null, new Point(rect.X + rect.Width / 2.0, rect.Y + rect.Height / 2.0), rect.Width / 2.0, rect.Height / 2.0);
+	}
+
+	private int FindLineBreak(string value, int start, double size, FontWeight? weight, double maxWidth)
+	{
+		int low = start + 1;
+		int high = value.Length;
+		int best = start + 1;
+		while (low <= high)
+		{
+			int middle = low + (high - low) / 2;
+			FormattedText formattedText = new FormattedText(value[start..middle], CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+				new Typeface(FontFamily, FontStyles.Normal, weight ?? FontWeights.Normal, FontStretches.Normal), size, Brushes.Transparent, 1.0);
+			if (formattedText.WidthIncludingTrailingWhitespace <= maxWidth)
+			{
+				best = middle;
+				low = middle + 1;
+			}
+			else
+			{
+				high = middle - 1;
+			}
+		}
+
+		return best;
+	}
+
+	private string Ellipsize(string value, double size, FontWeight? weight, double maxWidth)
+	{
+		const string ellipsis = "…";
+		if (MeasureWidth(value, size, weight) <= maxWidth)
+		{
+			return value;
+		}
+
+		int low = 0;
+		int high = value.Length;
+		int best = 0;
+		while (low <= high)
+		{
+			int middle = low + (high - low) / 2;
+			if (MeasureWidth(value[..middle] + ellipsis, size, weight) <= maxWidth)
+			{
+				best = middle;
+				low = middle + 1;
+			}
+			else
+			{
+				high = middle - 1;
+			}
+		}
+
+		return value[..best] + ellipsis;
+	}
+
+	private double MeasureWidth(string value, double size, FontWeight? weight)
+	{
+		FormattedText formattedText = new FormattedText(value, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+			new Typeface(FontFamily, FontStyles.Normal, weight ?? FontWeights.Normal, FontStretches.Normal), size, Brushes.Transparent, 1.0);
+		return formattedText.WidthIncludingTrailingWhitespace;
 	}
 }

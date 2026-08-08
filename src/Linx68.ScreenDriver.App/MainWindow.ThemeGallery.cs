@@ -12,6 +12,7 @@ public partial class MainWindow
 {
 	private void BuildThemeList()
 	{
+		_settings.SelectedThemeId = BuiltInThemes.NormalizeThemeId(_settings.SelectedThemeId) ?? _themeDefinitions[0].Id;
 		bool previousSuppression = _suppressThemeRefresh;
 		_suppressThemeRefresh = true;
 		try
@@ -58,6 +59,7 @@ public partial class MainWindow
 
 	private ThemeDefinition? GetThemeDefinition(string? id)
 	{
+		id = BuiltInThemes.NormalizeThemeId(id);
 		return _themeDefinitions.FirstOrDefault(definition =>
 			string.Equals(definition.Id, id, StringComparison.OrdinalIgnoreCase));
 	}

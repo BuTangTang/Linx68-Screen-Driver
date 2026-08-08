@@ -50,14 +50,17 @@ public static class BuiltInThemes
 			Define(new DotMatrixClockTheme(), ThemeCategory.Matrix),
 			Define(new DotMatrixWeatherClockTheme(), ThemeCategory.Matrix, ThemeDataRequirements.Weather, ThemeSettingsSections.Weather),
 			Define(new MusicTheme(lyricOffsetSeconds), ThemeCategory.Music, ThemeDataRequirements.Music | ThemeDataRequirements.Lyrics, ThemeSettingsSections.Music),
-			Define(new MusicPresentationTheme(MusicPresentationStyle.CoverFocus, lyricOffsetSeconds), ThemeCategory.Music, ThemeDataRequirements.Music | ThemeDataRequirements.Lyrics, ThemeSettingsSections.Music),
-			Define(new MusicPresentationTheme(MusicPresentationStyle.LyricFocus, lyricOffsetSeconds), ThemeCategory.Music, ThemeDataRequirements.Music | ThemeDataRequirements.Lyrics, ThemeSettingsSections.Music),
-			Define(new MusicPresentationTheme(MusicPresentationStyle.Pulse, lyricOffsetSeconds), ThemeCategory.Music, ThemeDataRequirements.Music | ThemeDataRequirements.Lyrics, ThemeSettingsSections.Music),
 			Define(new AiQuotaTheme(), ThemeCategory.Information, ThemeDataRequirements.AiQuota, ThemeSettingsSections.AiQuota),
 			Define(new StockTheme(), ThemeCategory.Information, ThemeDataRequirements.Stocks, ThemeSettingsSections.Stocks),
 			Define(imageTheme, ThemeCategory.Time, settingsSections: ThemeSettingsSections.Image, isStatic: true)
 		};
 	}
+
+	public static string? NormalizeThemeId(string? id) => id?.ToLowerInvariant() switch
+	{
+		"music-cover-focus" or "music-lyric-focus" or "music-pulse" => "music",
+		_ => id
+	};
 
 	private static ThemeDefinition Define(
 		IScreenTheme theme,

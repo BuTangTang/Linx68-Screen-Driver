@@ -47,6 +47,8 @@ internal static class Program
         VerifyFeatureNoticeGeometry();
         VerifySettingsIpEditorGeometry();
 		VerifyWorkspaceGeometry();
+		VerifyCompactPreviewGeometry();
+		VerifyDevicePreviewPlaceholder();
 		VerifyThemeCategoryNavigation();
 		VerifyManualThemeSelectionStopsAutoMusicSwitch();
 		VerifyAutomationControlDependency();
@@ -102,11 +104,11 @@ internal static class Program
             definitions.Select(definition => new ThemeCardViewModel(definition, preview: null)),
             "clock");
         Assert(viewModel.ThemeGroups.Count == 5
-               && viewModel.ThemeGroups.Single(group => group.Id == "music").Themes.Count == 4
+               && viewModel.ThemeGroups.Single(group => group.Id == "music").Themes.Count == 1
                && viewModel.ThemeGroups.Sum(group => group.Themes.Count) == definitions.Count
                && !viewModel.IsAllCategorySelected
                && viewModel.VisibleThemes.All(theme => theme.Definition.CategoryId == viewModel.SelectedTheme!.Definition.CategoryId),
-            "screen view model must open the current scheme category through the left navigation");
+            "screen view model must open the single confirmed music scheme through the left navigation");
         viewModel.SelectCategory("all");
         Assert(viewModel.IsAllCategorySelected && viewModel.VisibleThemes.Count == definitions.Count,
             "the all-schemes category must remain available on demand");
@@ -356,6 +358,7 @@ internal static class Program
 		var deviceStatus = (TextBlock)window.FindName("DeviceStatusText");
 		var deviceStatusDot = (System.Windows.Shapes.Ellipse)window.FindName("DeviceStatusDot");
 		var previewStatus = (TextBlock)window.FindName("PreviewStatusText");
+		var previewThemeSummary = (Border)window.FindName("PreviewThemeSummary");
 		var windowBehavior = (Border)window.FindName("WindowBehaviorCard");
 		var startupBehavior = (Border)window.FindName("StartupBehaviorCard");
         window.UpdateLayout();
@@ -368,11 +371,14 @@ internal static class Program
             $"workspace sidebar must be 196px: {workspace.ColumnDefinitions[0].Width.Value}");
         Assert(content.ColumnDefinitions[2].Width.Value == 288,
             $"preview rail must remain 288px: {content.ColumnDefinitions[2].Width.Value}");
-		Assert(themeCategories.Items.Count == 5
+        Assert(themeCategories.Items.Count == 5
 		       && themeGallery.Items.Count == shell.Screen.VisibleThemes.Count
 		       && themeGallery.Items.Count <= 5
-		       && shell.Screen.ThemeGroups.Sum(group => group.Themes.Count) == 18,
+		       && shell.Screen.ThemeGroups.Sum(group => group.Themes.Count) == 15,
 			"display schemes must use the left category navigation with one compact gallery");
+		Assert(shell.Screen.VisibleThemes.All(theme => !string.IsNullOrWhiteSpace(theme.Metadata))
+		       && shell.Screen.ThemeGroups.Single(group => group.Id == "music").Themes.All(theme => theme.Metadata.Contains("音乐")),
+			"theme cards must expose readable category and dynamic-state metadata, including the confirmed music scheme");
 		Assert(themeCategoryNavigation.VerticalAlignment == VerticalAlignment.Top
 		       && themeCategoryNavigation.MinHeight == 0,
 			"the scheme navigation must remain a compact list instead of a full-height empty panel");
@@ -387,6 +393,8 @@ internal static class Program
 			"device status must start as a clear offline state with a matching status indicator");
 		Assert(previewStatus.Text == "本地预览",
 			"offline devices must explain that the preview remains local and responsive");
+		Assert(previewThemeSummary.Child is StackPanel { Children.Count: 3 },
+			"the preview rail must summarize the currently selected scheme below the device frame");
 		Assert(windowBehavior.Padding == new Thickness(0)
 		       && startupBehavior.Padding == new Thickness(0),
 			"related tray and startup controls must be compactly grouped into their respective setting cards");
@@ -404,11 +412,84 @@ internal static class Program
         Console.WriteLine("PASS compact sidebar, left scheme categories, compact gallery, locate-current action and fixed preview rail");
     }
 
+    private static void VerifyCompactPreviewGeometry()
+    {
+        var settings = new AppSettings
+        {
+            HasCompletedOnboarding = true,
+            SelectedThemeId = "music",
+            MinimizeToTray = false,
+            CloseToTray = false
+        };
+        var window = new MainWindow(settings, new InMemorySettingsStore(settings))
+        {
+            Width = 1080,
+            Height = 680,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = 20,
+            Top = 20
+        };
+        window.Show();
+        WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+        window.UpdateLayout();
+
+        var previewHost = (Viewbox)window.FindName("DevicePreviewHost");
+        var devicePreview = (DevicePreviewControl)window.FindName("DevicePreview");
+        var summary = (Border)window.FindName("PreviewThemeSummary");
+        Rect hostBounds = previewHost.TransformToAncestor(window)
+            .TransformBounds(new Rect(new Point(), previewHost.RenderSize));
+        Rect summaryBounds = summary.TransformToAncestor(window)
+            .TransformBounds(new Rect(new Point(), summary.RenderSize));
+
+        Assert(previewHost.Stretch == Stretch.Uniform
+               && previewHost.StretchDirection == StretchDirection.DownOnly
+               && previewHost.ActualHeight > 0
+               && previewHost.ActualHeight < devicePreview.Height,
+            "the compact preview must scale the device uniformly down instead of clipping it");
+        Assert(hostBounds.Top >= 0
+               && hostBounds.Bottom <= summaryBounds.Top - summary.Margin.Top + 0.5
+               && summaryBounds.Bottom <= window.ActualHeight,
+            "the compact preview frame and current-scheme summary must remain fully inside the window");
+
+        window.Close();
+        Console.WriteLine("PASS compact preview scales without clipping the device frame or summary");
+    }
+
+    private static void VerifyDevicePreviewPlaceholder()
+    {
+        var preview = new DevicePreviewControl();
+        preview.Measure(new Size(154, 440));
+        preview.Arrange(new Rect(0, 0, 154, 440));
+        preview.UpdateLayout();
+
+        var bitmap = new RenderTargetBitmap(154, 440, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(preview);
+        var pixels = new byte[154 * 440 * 4];
+        bitmap.CopyPixels(pixels, 154 * 4, 0);
+        var placeholderInk = 0;
+        for (var y = 160; y < 280; y++)
+        {
+            for (var x = 20; x < 134; x++)
+            {
+                var offset = ((y * 154) + x) * 4;
+                if (pixels[offset] + pixels[offset + 1] + pixels[offset + 2] > 180)
+                {
+                    placeholderInk++;
+                }
+            }
+        }
+
+        Assert(placeholderInk > 40,
+            "an empty device preview must render a visible wait-for-data placeholder instead of a pure black screen");
+        Console.WriteLine($"PASS empty device preview placeholder ink={placeholderInk}");
+    }
+
     private static void VerifyThemeCategoryNavigation()
     {
         var settings = new AppSettings
         {
             HasCompletedOnboarding = true,
+            SelectedThemeId = "music-pulse",
             MinimizeToTray = false,
             CloseToTray = false
         };
@@ -421,8 +502,8 @@ internal static class Program
         var music = shell.Screen.ThemeGroups.Single(group => group.Id == "music");
         var musicCategory = FindVisualChild<RadioButton>(
             categories.ItemContainerGenerator.ContainerFromItem(music));
-        Assert(musicCategory is not null,
-            "the music scheme category must render an interactive radio button");
+        Assert(settings.SelectedThemeId == "music" && shell.Screen.SelectedTheme?.Id == "music" && musicCategory is not null,
+            "saved music presentation variants must migrate to the confirmed music scheme and render an interactive radio button");
 
         Assert(!InteractionMotion.GetIsInteractive(musicCategory!),
             "scheme categories must not scale beyond the scroll viewport and clip their left border");
@@ -438,8 +519,36 @@ internal static class Program
                && shell.Screen.VisibleThemes.All(theme => theme.Definition.CategoryId == "music"),
             "selecting a scheme category must refresh the gallery to its matching themes");
 
+        foreach (ThemeGroupViewModel group in shell.Screen.ThemeGroups)
+        {
+            var categoryButton = FindVisualChild<RadioButton>(
+                categories.ItemContainerGenerator.ContainerFromItem(group));
+            var label = categoryButton is null ? null : FindVisualChild<TextBlock>(categoryButton);
+            Assert(categoryButton is not null
+                   && label?.Text == group.DisplayName
+                   && categoryButton.Command?.CanExecute(categoryButton.CommandParameter) == true,
+                $"scheme category {group.Id} must keep a visible, executable left-nav label");
+
+            categoryButton!.Command!.Execute(categoryButton.CommandParameter);
+            WaitForDispatcher(TimeSpan.FromMilliseconds(80));
+            Assert(group.IsSelected
+                   && !shell.Screen.IsAllCategorySelected
+                   && shell.Screen.VisibleThemes.Count == group.Themes.Count
+                   && shell.Screen.VisibleThemes.All(theme => theme.Definition.CategoryId == group.Id)
+                   && shell.Screen.VisibleThemeCountText == $"{group.DisplayName} · {group.Themes.Count} 个",
+                $"scheme category {group.Id} must synchronize its selection, header and gallery: selected={group.IsSelected}; all={shell.Screen.IsAllCategorySelected}; visible={shell.Screen.VisibleThemes.Count}/{group.Themes.Count}; ids={string.Join(',', shell.Screen.VisibleThemes.Select(theme => theme.Definition.CategoryId).Distinct())}; header={shell.Screen.VisibleThemeCountText}");
+        }
+
+        shell.Screen.SelectCategoryCommand.Execute("all");
+        WaitForDispatcher(TimeSpan.FromMilliseconds(80));
+        Assert(shell.Screen.IsAllCategorySelected
+               && shell.Screen.ThemeGroups.All(group => !group.IsSelected)
+               && shell.Screen.VisibleThemes.Count == shell.Screen.AllThemeCount
+               && shell.Screen.VisibleThemeCountText == $"全部方案 · {shell.Screen.AllThemeCount} 个",
+            "all-schemes navigation must restore the full gallery without hiding category labels");
+
         window.Close();
-        Console.WriteLine("PASS scheme category selection refreshes the gallery");
+        Console.WriteLine("PASS every scheme category keeps its label and synchronizes the gallery");
     }
 
     private static void VerifyAutomationControlDependency()
@@ -460,16 +569,29 @@ internal static class Program
         var refreshPanel = (Grid)window.FindName("RefreshIntervalPanel");
         var refreshSlider = (Slider)window.FindName("RefreshIntervalSlider");
 		var deviceStatusDot = (Ellipse)window.FindName("DeviceStatusDot");
+		var automationPanel = (StackPanel)window.FindName("AutomationPanel");
+		var autoMusicCard = (Border)window.FindName("AutoMusicCard");
+		var autoMusicCheckBox = (CheckBox)window.FindName("AutoMusicCheckBox");
+		var autoMusicDescription = (TextBlock)window.FindName("AutoMusicDescription");
         Assert(autoPush.IsChecked == true && refreshPanel.IsEnabled && refreshSlider.IsEnabled,
             "the refresh interval must be editable while timed push is enabled");
 		Assert(!deviceStatusDot.HasAnimatedProperties,
 			"device connection state must remain static instead of continuously pulsing");
+		int automationCardCount = automationPanel.Children.OfType<Border>().Count();
+		bool hasCoverLyricsDescription = autoMusicDescription.Text.Contains("封面歌词", StringComparison.Ordinal);
+		bool hasRemovedMediaThemeCard = window.FindName("MediaThemeAutoSwitchCard") is not null;
+		Assert(automationCardCount == 2
+			&& autoMusicCard.IsVisible
+			&& autoMusicCheckBox.IsVisible
+			&& hasCoverLyricsDescription
+			&& !hasRemovedMediaThemeCard,
+			$"automation must retain only timed push and the cover-lyrics music switch: cards={automationCardCount}, cardVisible={autoMusicCard.IsVisible}, switchVisible={autoMusicCheckBox.IsVisible}, coverLyrics={hasCoverLyricsDescription}, oldCard={hasRemovedMediaThemeCard}");
         autoPush.IsChecked = false;
         WaitForDispatcher(TimeSpan.FromMilliseconds(100));
         Assert(!refreshPanel.IsEnabled && !refreshSlider.IsEnabled && refreshPanel.Opacity < 1,
             "the refresh interval must be visibly disabled while timed push is off");
         window.Close();
-        Console.WriteLine("PASS timed-push interval follows its controlling switch");
+        Console.WriteLine("PASS automation keeps the cover-lyrics switch without redundant media-theme controls");
     }
 
     private static void VerifyManualThemeSelectionStopsAutoMusicSwitch()

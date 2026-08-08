@@ -8,9 +8,15 @@ public sealed record LyricsSnapshot(bool Available, IReadOnlyList<LyricLine> Lin
 
 	public (LyricLine? Current, LyricLine? Next) FindAt(TimeSpan position, double offsetSeconds = 0)
 	{
+		(LyricLine? _, LyricLine? current, LyricLine? next) = FindContextAt(position, offsetSeconds);
+		return (current, next);
+	}
+
+	public (LyricLine? Previous, LyricLine? Current, LyricLine? Next) FindContextAt(TimeSpan position, double offsetSeconds = 0)
+	{
 		if (!Available || Lines.Count == 0)
 		{
-			return (null, null);
+			return (null, null, null);
 		}
 
 		TimeSpan adjusted = position + TimeSpan.FromSeconds(offsetSeconds);
@@ -25,6 +31,7 @@ public sealed record LyricsSnapshot(bool Available, IReadOnlyList<LyricLine> Lin
 		}
 
 		return (
+			currentIndex > 0 ? Lines[currentIndex - 1] : null,
 			currentIndex >= 0 ? Lines[currentIndex] : null,
 			currentIndex + 1 < Lines.Count ? Lines[currentIndex + 1] : null);
 	}

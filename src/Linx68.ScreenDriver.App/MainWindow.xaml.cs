@@ -985,7 +985,6 @@ public partial class MainWindow : Window
 		CurrentThemeDetailsText.Text = screenTheme.Details;
 		SelectImageButton.Visibility = definition.Shows(ThemeSettingsSections.Image) ? Visibility.Visible : Visibility.Collapsed;
 		UpdateContextualDataCards(definition);
-		UpdateAutomationVisibility(definition);
 		if (_loaded)
 		{
 			InteractionMotion.Reveal(CurrentThemeNameText, 4.0, 0.996);
@@ -1060,10 +1059,6 @@ public partial class MainWindow : Window
 		SetContextCardVisibility(StockDataCard, definition.Shows(ThemeSettingsSections.Stocks));
 	}
 
-	private void UpdateAutomationVisibility(ThemeDefinition definition)
-	{
-		SetContextCardVisibility(AutoMusicCard, definition.Category == ThemeCategory.Music);
-	}
 	private static void SetContextCardVisibility(FrameworkElement card, bool visible)
 	{
 		if (!visible)

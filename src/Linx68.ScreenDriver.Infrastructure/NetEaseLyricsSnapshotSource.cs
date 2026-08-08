@@ -12,6 +12,12 @@ namespace Linx68.ScreenDriver.Infrastructure;
 /// </summary>
 public sealed class NetEaseLyricsSnapshotSource : ILyricsSnapshotSource, IDisposable
 {
+	private static readonly string[] LeadingCreditKeywords =
+	[
+		"作词", "作曲", "编曲", "制作", "监制", "演唱", "和声", "人声", "混音", "母带", "录音",
+		"封面", "统筹", "企划", "发行", "出品", "美术", "设计", "词", "曲"
+	];
+
     private readonly ILyricsSnapshotSource _fallback;
     private readonly HttpClient _client;
     private readonly bool _ownsClient;
@@ -56,7 +62,7 @@ public sealed class NetEaseLyricsSnapshotSource : ILyricsSnapshotSource, IDispos
                 && lrc.TryGetProperty("lyric", out JsonElement value)
                     ? value.GetString()
                     : null;
-            IReadOnlyList<LyricLine> lines = LrcLibLyricsSnapshotSource.ParseSyncedLyrics(lyrics);
+            IReadOnlyList<LyricLine> lines = FilterLeadingCredits(LrcLibLyricsSnapshotSource.ParseSyncedLyrics(lyrics));
             var snapshot = lines.Count == 0 ? LyricsSnapshot.Unavailable : new LyricsSnapshot(true, lines);
             _cache[trackId] = new CacheEntry(snapshot, DateTimeOffset.Now + (snapshot.Available ? TimeSpan.FromHours(12) : TimeSpan.FromHours(1)));
             return snapshot.Available ? snapshot : await _fallback.ReadAsync(music, cancellationToken);
@@ -71,6 +77,30 @@ public sealed class NetEaseLyricsSnapshotSource : ILyricsSnapshotSource, IDispos
     public void Dispose()
     {
         if (_ownsClient) _client.Dispose();
+    }
+
+    private static IReadOnlyList<LyricLine> FilterLeadingCredits(IReadOnlyList<LyricLine> lines)
+    {
+        int firstLyricIndex = 0;
+        while (firstLyricIndex < lines.Count && IsLeadingCreditLine(lines[firstLyricIndex].Text))
+        {
+            firstLyricIndex++;
+        }
+
+        return firstLyricIndex == 0 ? lines : lines.Skip(firstLyricIndex).ToArray();
+    }
+
+    private static bool IsLeadingCreditLine(string text)
+    {
+        string normalized = string.Concat(text.Where(static character => !char.IsWhiteSpace(character)));
+        int delimiterIndex = normalized.IndexOfAny(['：', ':']);
+        if (delimiterIndex <= 0)
+        {
+            return false;
+        }
+
+        string label = normalized[..delimiterIndex];
+        return LeadingCreditKeywords.Any(keyword => label.Contains(keyword, StringComparison.Ordinal));
     }
 
     private sealed record CacheEntry(LyricsSnapshot Snapshot, DateTimeOffset ExpiresAt);

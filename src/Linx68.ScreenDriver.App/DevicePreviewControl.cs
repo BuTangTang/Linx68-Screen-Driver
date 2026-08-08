@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 using Brush = System.Windows.Media.Brush;
@@ -55,18 +56,35 @@ public sealed class DevicePreviewControl : FrameworkElement
 		drawingContext.DrawRoundedRectangle(frameBrush, null, rectangle, 26.0, 26.0);
 		RectangleGeometry clipGeometry = new RectangleGeometry(rect, 20.0, 20.0);
 		drawingContext.PushClip(clipGeometry);
+		double horizontalScale = rect.Width / 142.0;
+		double verticalScale = rect.Height / 428.0;
 		if (FrameSource == null)
 		{
 			drawingContext.DrawRectangle(emptyScreenBrush, null, rect);
+			DrawPlaceholder(drawingContext, rect, Math.Min(horizontalScale, verticalScale));
 		}
 		else
 		{
 			drawingContext.DrawImage(FrameSource, rect);
 		}
-		double num = rect.Width / 142.0;
-		double num2 = rect.Height / 428.0;
-		drawingContext.DrawEllipse(firmwareOverlayBrush, null, new Point(rect.X + (FirmwareHorizontalInset + 18.0) * num, rect.Y + 23.0 * num2), 18.0 * num, 18.0 * num2);
-		drawingContext.DrawRoundedRectangle(rectangle: new Rect(rect.Right - (FirmwareHorizontalInset + 77.0) * num, rect.Y + 5.0 * num2, 77.0 * num, 36.0 * num2), brush: firmwareOverlayBrush, pen: null, radiusX: 18.0 * num, radiusY: 18.0 * num2);
+		drawingContext.DrawEllipse(firmwareOverlayBrush, null, new Point(rect.X + (FirmwareHorizontalInset + 18.0) * horizontalScale, rect.Y + 23.0 * verticalScale), 18.0 * horizontalScale, 18.0 * verticalScale);
+		drawingContext.DrawRoundedRectangle(rectangle: new Rect(rect.Right - (FirmwareHorizontalInset + 77.0) * horizontalScale, rect.Y + 5.0 * verticalScale, 77.0 * horizontalScale, 36.0 * verticalScale), brush: firmwareOverlayBrush, pen: null, radiusX: 18.0 * horizontalScale, radiusY: 18.0 * verticalScale);
 		drawingContext.Pop();
+	}
+
+	private void DrawPlaceholder(DrawingContext drawingContext, Rect bounds, double scale)
+	{
+		var typeface = new Typeface((System.Windows.Media.FontFamily)FindResource("UiFontFamily"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
+		var text = new FormattedText(
+			"等待预览数据",
+			CultureInfo.CurrentUICulture,
+			System.Windows.FlowDirection.LeftToRight,
+			typeface,
+			Math.Max(7, 9 * scale),
+			new SolidColorBrush(System.Windows.Media.Color.FromRgb(148, 160, 174)),
+			VisualTreeHelper.GetDpi(this).PixelsPerDip);
+		drawingContext.DrawText(text, new Point(
+			bounds.Left + (bounds.Width - text.Width) / 2,
+			bounds.Top + (bounds.Height - text.Height) / 2));
 	}
 }

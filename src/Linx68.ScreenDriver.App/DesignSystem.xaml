@@ -579,17 +579,17 @@
         <Setter Property="Background" Value="{DynamicResource Surface.Card}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Stroke.Default}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Height" Value="146" />
+        <Setter Property="Height" Value="154" />
         <Setter Property="Margin" Value="0,0,12,10" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
-                    <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource Radius.Card}" Padding="12">
+                    <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource Radius.Card}" Padding="14">
                         <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="46" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                            <Border Width="46" HorizontalAlignment="Left" Background="{DynamicResource Surface.Screen}" CornerRadius="7" ClipToBounds="True" BorderBrush="{DynamicResource Stroke.Strong}" BorderThickness="1">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="50" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Border Width="50" Height="118" HorizontalAlignment="Left" VerticalAlignment="Center" Background="{DynamicResource Surface.Screen}" CornerRadius="9" ClipToBounds="True" BorderBrush="{DynamicResource Stroke.Strong}" BorderThickness="1">
                                 <ContentPresenter Content="{Binding Preview}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                                     <ContentPresenter.ContentTemplate>
                                         <DataTemplate>
@@ -603,7 +603,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Surface.Hover}" /><Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Stroke.Strong}" /></Trigger>
-                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource AccentSoftBrush}" /><Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}" /><Setter TargetName="Chrome" Property="BorderThickness" Value="2,1,1,1" /></Trigger>
+                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource AccentSoftBrush}" /><Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}" /><Setter TargetName="Chrome" Property="BorderThickness" Value="2" /></Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
