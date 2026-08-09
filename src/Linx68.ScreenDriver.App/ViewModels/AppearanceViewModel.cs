@@ -35,6 +35,9 @@ public partial class AppearanceViewModel : ObservableObject
     private AppearanceMode appearanceMode = AppearanceMode.System;
 
     [ObservableProperty]
+    private ScreenColorMode screenColorMode = ScreenColorMode.Night;
+
+    [ObservableProperty]
     private string accentColor = "#E4694C";
 
     [ObservableProperty]
@@ -79,6 +82,30 @@ public partial class AppearanceViewModel : ObservableObject
         }
     }
 
+    public bool IsDaylightScreen
+    {
+        get => ScreenColorMode == ScreenColorMode.Daylight;
+        set
+        {
+            if (value)
+            {
+                ScreenColorMode = ScreenColorMode.Daylight;
+            }
+        }
+    }
+
+    public bool IsNightScreen
+    {
+        get => ScreenColorMode == ScreenColorMode.Night;
+        set
+        {
+            if (value)
+            {
+                ScreenColorMode = ScreenColorMode.Night;
+            }
+        }
+    }
+
     public MediaBrush AccentPreviewBrush => new MediaSolidColorBrush(_lastValidAccentColor);
 
     public MediaBrush AccentBorderBrush => IsAccentColorValid ? ValidAccentBorderBrush : InvalidAccentBrush;
@@ -90,6 +117,7 @@ public partial class AppearanceViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(settings);
         SetFontOptions(fontOptions, settings.SelectedFontId);
         AppearanceMode = settings.AppearanceMode;
+        ScreenColorMode = settings.ScreenColorMode;
         AccentColor = settings.AccentColor;
         SelectedImageTimePlacement = ImageTimePlacements.FirstOrDefault(option =>
             option.Value == settings.ImageTimePlacement) ?? ImageTimePlacements[^1];
@@ -112,6 +140,7 @@ public partial class AppearanceViewModel : ObservableObject
     public void ApplyTo(AppSettings settings)
     {
         settings.AppearanceMode = AppearanceMode;
+        settings.ScreenColorMode = ScreenColorMode;
         settings.AccentColor = IsAccentColorValid
             ? AccentColor.Trim().ToUpperInvariant()
             : "#E4694C";
@@ -124,6 +153,12 @@ public partial class AppearanceViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSystemAppearance));
         OnPropertyChanged(nameof(IsLightAppearance));
         OnPropertyChanged(nameof(IsDarkAppearance));
+    }
+
+    partial void OnScreenColorModeChanged(ScreenColorMode value)
+    {
+        OnPropertyChanged(nameof(IsDaylightScreen));
+        OnPropertyChanged(nameof(IsNightScreen));
     }
 
     partial void OnAccentColorChanged(string value)

@@ -38,8 +38,6 @@ public partial class MainWindow : Window
 
 	private readonly IAutomaticWeatherLocationProvider _weatherLocationProvider;
 
-	private readonly IStockSnapshotSource _stockSource;
-
 	private readonly IDashboardSnapshotBuilder _snapshotBuilder;
 
 	private readonly IDashboardRefreshService _refreshService;
@@ -86,9 +84,15 @@ public partial class MainWindow : Window
 
 	private readonly IAiQuotaSnapshotSource _codexQuotaSource = new CodexQuotaSnapshotSource();
 
+	private readonly ICodexTaskSnapshotSource _codexTaskSource = new CodexTaskSnapshotSource();
+
 	private AiQuotaSnapshot? _latestAiQuota;
 
+	private CodexTaskSnapshot? _latestCodexTasks;
+
 	private DateTimeOffset _nextCodexQuotaReadAt = DateTimeOffset.MinValue;
+
+	private DateTimeOffset _nextCodexTaskReadAt = DateTimeOffset.MinValue;
 
 	private SystemSnapshot? _latestSnapshot;
 
@@ -140,7 +144,6 @@ public partial class MainWindow : Window
 			new LrcLibLyricsSnapshotSource(),
 			new OpenMeteoWeatherSnapshotSource(),
 			new WindowsWeatherLocationProvider(),
-			new YahooStockSnapshotSource(),
 			null,
 			null,
 			new HttpImageDeviceTransport(),
@@ -161,7 +164,6 @@ public partial class MainWindow : Window
 			new LrcLibLyricsSnapshotSource(),
 			new OpenMeteoWeatherSnapshotSource(),
 			new WindowsWeatherLocationProvider(),
-			new YahooStockSnapshotSource(),
 			null,
 			null,
 			new HttpImageDeviceTransport(),
@@ -181,7 +183,6 @@ public partial class MainWindow : Window
 		ILyricsSnapshotSource lyricsSource,
 		IWeatherSnapshotSource weatherSource,
 		IAutomaticWeatherLocationProvider weatherLocationProvider,
-		IStockSnapshotSource stockSource,
 		IDashboardSnapshotBuilder snapshotBuilder,
 		IDashboardRefreshService refreshService,
 		IDeviceTransport transport,
@@ -197,7 +198,6 @@ public partial class MainWindow : Window
 			lyricsSource,
 			weatherSource,
 			weatherLocationProvider,
-			stockSource,
 			snapshotBuilder,
 			refreshService,
 			transport,
@@ -217,7 +217,6 @@ public partial class MainWindow : Window
 		ILyricsSnapshotSource lyricsSource,
 		IWeatherSnapshotSource weatherSource,
 		IAutomaticWeatherLocationProvider weatherLocationProvider,
-		IStockSnapshotSource stockSource,
 		IDashboardSnapshotBuilder? snapshotBuilder,
 		IDashboardRefreshService? refreshService,
 		IDeviceTransport transport,
@@ -234,12 +233,10 @@ public partial class MainWindow : Window
 		_lyricsSource = lyricsSource;
 		_weatherSource = weatherSource;
 		_weatherLocationProvider = weatherLocationProvider;
-		_stockSource = stockSource;
 		_snapshotBuilder = snapshotBuilder ?? new DashboardSnapshotBuilder(
 			systemSource,
 			lyricsSource,
-			weatherSource,
-			stockSource);
+			weatherSource);
 		_refreshService = refreshService ?? new DashboardRefreshService(
 			musicSource,
 			_snapshotBuilder,
@@ -298,7 +295,6 @@ public partial class MainWindow : Window
 				(_transport as IDisposable)?.Dispose();
 				(_weatherSource as IDisposable)?.Dispose();
 				(_weatherLocationProvider as IDisposable)?.Dispose();
-				(_stockSource as IDisposable)?.Dispose();
 				(_lyricsSource as IDisposable)?.Dispose();
 				(_musicSource as IDisposable)?.Dispose();
 				(_systemSource as IDisposable)?.Dispose();
@@ -394,18 +390,9 @@ public partial class MainWindow : Window
 		WeatherAutomaticLocationCheckBox.IsChecked = _settings.Weather.UseAutomaticLocation;
 		WeatherLocationTextBox.Text = string.IsNullOrWhiteSpace(_settings.Weather.LocationQuery) ? "北京" : _settings.Weather.LocationQuery;
 		WeatherLocationTextBox.IsEnabled = !_settings.Weather.UseAutomaticLocation;
-		_settings.Stocks ??= new StockSettings();
 		_settings.Music ??= new MusicSettings();
 		OnlineLyricsCheckBox.IsChecked = _settings.Music.EnableOnlineLyrics;
 		LyricOffsetSlider.Value = Math.Clamp(_settings.Music.LyricOffsetSeconds, -3, 3);
-		var stockItems = NormalizeStockItems(_settings.Stocks);
-		StockSymbol1TextBox.Text = stockItems[0].Symbol;
-		StockAlias1TextBox.Text = stockItems[0].Alias;
-		StockSymbol2TextBox.Text = stockItems[1].Symbol;
-		StockAlias2TextBox.Text = stockItems[1].Alias;
-		StockSymbol3TextBox.Text = stockItems[2].Symbol;
-		StockAlias3TextBox.Text = stockItems[2].Alias;
-		SelectComboByTag(StockColorPreferenceComboBox, _settings.Stocks.RedForGain ? "RedGain" : "GreenGain");
 		_imageTheme.ImagePath = _settings.ImagePath;
 		SelectTheme(_settings.SelectedThemeId);
 		UpdateEndpointSummary();
@@ -431,16 +418,6 @@ public partial class MainWindow : Window
 			LocationQuery = ReadWeatherLocation(),
 			UseAutomaticLocation = WeatherAutomaticLocationCheckBox.IsChecked == true
 		};
-		_settings.Stocks = new StockSettings
-		{
-			RedForGain = ReadComboTag(StockColorPreferenceComboBox, "RedGain") == "RedGain",
-			Items =
-			[
-				new StockItemSettings { Symbol = StockSymbol1TextBox.Text.Trim(), Alias = StockAlias1TextBox.Text.Trim() },
-				new StockItemSettings { Symbol = StockSymbol2TextBox.Text.Trim(), Alias = StockAlias2TextBox.Text.Trim() },
-				new StockItemSettings { Symbol = StockSymbol3TextBox.Text.Trim(), Alias = StockAlias3TextBox.Text.Trim() }
-			]
-		};
 		_settings.Music = new MusicSettings
 		{
 			EnableOnlineLyrics = OnlineLyricsCheckBox.IsChecked == true,
@@ -452,12 +429,6 @@ public partial class MainWindow : Window
 		UpdateTrayVisibility();
 	}
 
-	private static IReadOnlyList<StockItemSettings> NormalizeStockItems(StockSettings settings)
-	{
-		var items = (settings.Items ?? []).Take(3).ToList();
-		while (items.Count < 3) items.Add(new StockItemSettings());
-		return items;
-	}
 	private void UpdateRenderer()
 	{
 		ScreenProfile profile = new ScreenProfile(142, 428, 524288, _settings.SafeArea);
@@ -499,7 +470,7 @@ public partial class MainWindow : Window
 		await CommitAndPushAsync();
 	}
 
-	private async Task CommitAndPushAsync()
+	private async Task CommitAndPushAsync(bool preferCachedPreview = false)
 	{
 		if (!_loaded)
 		{
@@ -520,6 +491,11 @@ public partial class MainWindow : Window
 		{
 			ApplyControlsToSettings();
 			await _settingsStore.SaveAsync(_settings);
+			bool pushedCachedPreview = preferCachedPreview && TryRenderLatestSnapshot();
+			if (pushedCachedPreview)
+			{
+				await PushLatestAsync(force: true);
+			}
 			await RefreshPreviewAsync();
 			if (_themeGalleryPreviewDirty)
 			{
@@ -545,6 +521,33 @@ public partial class MainWindow : Window
 		}
 	}
 
+	private bool TryRenderLatestSnapshot()
+	{
+		if (_latestSnapshot is null || _themeDefinitions.Count == 0)
+		{
+			return false;
+		}
+
+		try
+		{
+			ThemeDefinition selectedDefinition = GetSelectedThemeDefinition() ?? _themeDefinitions[0];
+			_latestFrame = _renderer.Render(
+				selectedDefinition.Theme,
+				_latestSnapshot,
+				100,
+				GetAccentColor(),
+				GetSelectedFontFamily(),
+				GetScreenDisplayOptions());
+			DevicePreview.FrameSource = LoadBitmap(_latestFrame.JpegBytes);
+			return true;
+		}
+		catch (Exception ex)
+		{
+			Trace.TraceWarning($"Failed to render cached display preview: {ex}");
+			return false;
+		}
+	}
+
 	private async Task RefreshPreviewAsync()
 	{
 		if (_busy || !_loaded)
@@ -561,7 +564,8 @@ public partial class MainWindow : Window
 					_settings,
 					selectedDefinition.Id,
 					_lastEffectiveThemeId,
-					ReadAiQuotaAsync));
+					ReadAiQuotaAsync,
+					ReadCodexTasksAsync));
 			ThemeDefinition effectiveDefinition = refresh.EffectiveTheme;
 			IScreenTheme theme2 = effectiveDefinition.Theme;
 			_mediaAutomationThemeChanged = refresh.EffectiveThemeChanged;
@@ -569,12 +573,10 @@ public partial class MainWindow : Window
 			_automaticLocationFallback = refresh.UsedAutomaticWeatherLocationFallback;
 			bool needsLyrics = effectiveDefinition.Requires(ThemeDataRequirements.Lyrics);
 			bool needsWeather = effectiveDefinition.Requires(ThemeDataRequirements.Weather);
-			bool needsStocks = effectiveDefinition.Requires(ThemeDataRequirements.Stocks);
 			_latestSnapshot = refresh.Snapshot;
 			SystemSnapshot system = _latestSnapshot;
 			MusicSnapshot musicSnapshot = system.Music ?? refresh.SourceMusic;
 			WeatherSnapshot? weather = system.Weather;
-			StockSnapshot? stocks = system.Stocks;
 			_latestFrame = _renderer.Render(theme2, _latestSnapshot, 100, GetAccentColor(), GetSelectedFontFamily(), GetScreenDisplayOptions());
 			BitmapImage frameSource = LoadBitmap(_latestFrame.JpegBytes);
 			DevicePreview.FrameSource = frameSource;
@@ -595,14 +597,6 @@ public partial class MainWindow : Window
 			else if (needsWeather)
 			{
 				WeatherSourceStatusText.Text = weather?.ErrorMessage ?? "暂时无法获取天气数据";
-			}
-			if (stocks is { Quotes.Count: > 0 })
-			{
-				StockSourceStatusText.Text = $"{stocks.Quotes.Count} 项 · {(stocks.IsStale ? "上次数据" : $"更新 {stocks.UpdatedAt:HH:mm}")}";
-			}
-			else if (needsStocks)
-			{
-				StockSourceStatusText.Text = stocks?.ErrorMessage ?? "请添加至少一个行情代码";
 			}
 		}
 		catch (Exception ex)
@@ -637,6 +631,20 @@ public partial class MainWindow : Window
 			AiSourceStatusText.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 74, 84));
 			return _latestAiQuota is null ? AiQuotaSnapshot.Empty : ApplyAiDisplayName(_latestAiQuota);
 		}
+	}
+
+	private async Task<CodexTaskSnapshot?> ReadCodexTasksAsync(CancellationToken cancellationToken = default)
+	{
+		bool isAiQuotaTheme = string.Equals(
+			GetSelectedThemeDefinition()?.Id,
+			"ai-quota",
+			StringComparison.OrdinalIgnoreCase);
+		if (isAiQuotaTheme && ReadAiSourceKind() != AiQuotaSourceKind.OpenAICodex)
+		{
+			return null;
+		}
+
+		return await ReadCodexTasksAsync(force: false, cancellationToken);
 	}
 
 	private MiMoTokenPlanWindow GetOrCreateMiMoWindow()
@@ -682,6 +690,27 @@ public partial class MainWindow : Window
 			return _latestAiQuota is null
 				? AiQuotaSnapshot.Unavailable(ReadAiDisplayName())
 				: ApplyAiDisplayName(_latestAiQuota);
+		}
+	}
+
+	private async Task<CodexTaskSnapshot> ReadCodexTasksAsync(bool force, CancellationToken cancellationToken = default)
+	{
+		if (!force && _latestCodexTasks is not null && DateTimeOffset.UtcNow < _nextCodexTaskReadAt)
+		{
+			return _latestCodexTasks;
+		}
+
+		try
+		{
+			CodexTaskSnapshot snapshot = await _codexTaskSource.ReadAsync(cancellationToken);
+			_latestCodexTasks = snapshot;
+			_nextCodexTaskReadAt = DateTimeOffset.UtcNow.AddSeconds(12);
+			return snapshot;
+		}
+		catch (Exception ex)
+		{
+			_nextCodexTaskReadAt = DateTimeOffset.UtcNow.AddSeconds(12);
+			return _latestCodexTasks ?? CodexTaskSnapshot.Unavailable(DateTimeOffset.UtcNow, ex.Message);
 		}
 	}
 
@@ -745,7 +774,9 @@ public partial class MainWindow : Window
 			AiDisplayNameTextBox.Text = GetDefaultAiDisplayName(sourceKind);
 		}
 		_latestAiQuota = null;
+		_latestCodexTasks = null;
 		_nextCodexQuotaReadAt = DateTimeOffset.MinValue;
+		_nextCodexTaskReadAt = DateTimeOffset.MinValue;
 		ResetAiQuotaDisplay();
 		UpdateAiSourceUi();
 		ScheduleAutoCommit();
@@ -979,11 +1010,8 @@ public partial class MainWindow : Window
 		string id = definition.Id;
 		IScreenTheme screenTheme = definition.Theme;
 		CurrentThemeNameText.Text = screenTheme.DisplayName;
-		CurrentThemeDescription.Text = (definition.Shows(ThemeSettingsSections.Image) && !string.IsNullOrWhiteSpace(_imageTheme.ImagePath))
-			? _imageTheme.ImagePath
-			: screenTheme.Description;
+		CurrentThemeDescription.Text = screenTheme.Description;
 		CurrentThemeDetailsText.Text = screenTheme.Details;
-		SelectImageButton.Visibility = definition.Shows(ThemeSettingsSections.Image) ? Visibility.Visible : Visibility.Collapsed;
 		UpdateContextualDataCards(definition);
 		if (_loaded)
 		{
@@ -1008,18 +1036,14 @@ public partial class MainWindow : Window
 			}
 			await ShowOneTimeFeatureNoticeAsync(id);
 			_settings.SelectedThemeId = id;
-			await CommitAndPushAsync();
+			await CommitAndPushAsync(preferCachedPreview: true);
 		}
 	}
 
 	private async Task ShowOneTimeFeatureNoticeAsync(string themeId)
 	{
 		FeatureNoticeWindow? notice = null;
-		if (themeId == "stocks" && !_settings.HasAcknowledgedStockNotice)
-		{
-			notice = FeatureNoticeWindow.CreateStockNotice();
-		}
-		else if (themeId == "ai-quota" && ReadAiSourceKind() == AiQuotaSourceKind.OpenAICodex && !_settings.HasAcknowledgedCodexNotice)
+		if (themeId == "ai-quota" && ReadAiSourceKind() == AiQuotaSourceKind.OpenAICodex && !_settings.HasAcknowledgedCodexNotice)
 		{
 			notice = FeatureNoticeWindow.CreateCodexNotice();
 		}
@@ -1035,11 +1059,7 @@ public partial class MainWindow : Window
 
 		notice.Owner = this;
 		notice.ShowDialog();
-		if (themeId == "stocks")
-		{
-			_settings.HasAcknowledgedStockNotice = true;
-		}
-		else if (ReadAiSourceKind() == AiQuotaSourceKind.OpenAICodex)
+		if (ReadAiSourceKind() == AiQuotaSourceKind.OpenAICodex)
 		{
 			_settings.HasAcknowledgedCodexNotice = true;
 		}
@@ -1056,7 +1076,6 @@ public partial class MainWindow : Window
 		SetContextCardVisibility(MusicDataCard, definition.Shows(ThemeSettingsSections.Music));
 		SetContextCardVisibility(AiQuotaDataCard, definition.Shows(ThemeSettingsSections.AiQuota));
 		SetContextCardVisibility(WeatherDataCard, definition.Shows(ThemeSettingsSections.Weather));
-		SetContextCardVisibility(StockDataCard, definition.Shows(ThemeSettingsSections.Stocks));
 	}
 
 	private static void SetContextCardVisibility(FrameworkElement card, bool visible)
@@ -1098,32 +1117,6 @@ public partial class MainWindow : Window
 			};
 			InteractionMotion.Reveal(frameworkElement, 8.0, 0.994);
 		}
-	}
-
-	private async void ChooseImageButton_OnClick(object sender, RoutedEventArgs e)
-	{
-		Microsoft.Win32.OpenFileDialog openFileDialog = new Microsoft.Win32.OpenFileDialog
-		{
-			Title = "选择键盘屏幕图片",
-			Filter = "图片文件|*.jpg;*.jpeg;*.png;*.bmp;*.webp|所有文件|*.*"
-		};
-		if (openFileDialog.ShowDialog(this) != true)
-		{
-			return;
-		}
-		_imageTheme.ImagePath = openFileDialog.FileName;
-		_settings.ImagePath = openFileDialog.FileName;
-		_settings.SelectedThemeId = "image";
-		_suppressThemeRefresh = true;
-		try
-		{
-			SelectTheme("image");
-		}
-		finally
-		{
-			_suppressThemeRefresh = false;
-		}
-		await CommitAndPushAsync();
 	}
 
 	private async void TestConnectionButton_OnClick(object sender, RoutedEventArgs e)
@@ -1237,7 +1230,7 @@ public partial class MainWindow : Window
 
 	private ScreenDisplayOptions GetScreenDisplayOptions()
 	{
-		return new ScreenDisplayOptions(_settings.ImageTimePlacement);
+		return new ScreenDisplayOptions(_settings.ImageTimePlacement, _settings.ScreenColorMode);
 	}
 
 	private System.Windows.Media.Color GetAccentColor()

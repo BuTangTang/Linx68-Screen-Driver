@@ -62,6 +62,18 @@ WindowsMusicSnapshotSource
 
 平台名仍可由设置页的“屏幕显示名称”覆盖，且 MiMo 等非 Codex 来源保持自己的名称；不以渲染层的硬编码替代真实来源、用户名称或 Codex 的 ChatGPT 登录说明。
 
+### Codex 额度圆环
+
+`AiQuotaTheme` 使用深紫到深蓝背景，在顶部显示实际平台名和额度类型。中部圆环从十二点方向开始顺时针绘制可用百分比；圆环终点有强调色状态点，中央只显示百分比与“可用额度”。下方第一张卡固定展示下一次重置（没有精确时间时展示周期），并附带真实的订阅/API Key 指标；第二张卡居中展示剩余次数或 API 指标，不根据百分比生成“充足 / 留意 / 偏低”等主观状态。
+
+渲染层不保存额度历史，也不绘制假设的日用量柱状图。所有文字使用 `AiQuotaSnapshot` 的现有字段；平台名必须继续支持 Codex、MiMo 和用户自定义名称。
+
+### 股票功能移除与旧配置迁移
+
+股票主题、设置卡、Yahoo Finance 数据源接口、快照模型、首次提示窗口和对应测试夹具一并删除，不保留隐藏入口或空实现。`ThemeDataRequirements`、`ThemeSettingsSections` 与 `SystemSnapshot` 不再携带股票字段，刷新链路只按需读取系统、音乐、歌词、天气和额度数据。
+
+设置模型升级到版本 8：反序列化时历史 JSON 中的 `Stocks` 和 `HasAcknowledgedStockNotice` 字段由 JSON 层忽略；若 `SelectedThemeId` 为 `stocks`，`BuiltInThemes.NormalizeThemeId` 将其归一为 `clock-dot-matrix`。由于版本升级，加载后的配置会原子写回，因此旧字段在下一次启动后不再保留。
+
 ### 真实音乐帧验收
 
 烟雾测试提供 `--music-preview <输出路径>`。该命令读取一次当前 `WindowsMusicSnapshotSource` 快照；若快照来自网易云，则复用 `NetEaseMusicSnapshotEnricher` 和 `NetEaseLyricsSnapshotSource` 补齐封面与同步歌词。随后使用现有 `MusicTheme` 与 `ScreenRenderer` 输出标准 142×428 JPEG。`--music-motion-preview <输出目录>` 在同一个媒体源中读取首句时间戳，再等待到首句开始后、间隔四秒取得两份快照；命令要求同曲目位置递增，并导出两张帧验证歌词与动效刷新。命令不写入设置、不推送设备，也不在没有可用媒体会话时伪造成功。
@@ -105,3 +117,5 @@ WindowsMusicSnapshotSource
 - 为网易云模拟响应加入连续开头署名、第一句正式歌词和后续署名文本，验证只剔除开头署名且正式歌词顺序不变。
 - 为无封面与损坏封面字节分别渲染，验证绘制不会失败且输出保持合规；为歌词上下文增加上一句断言，并渲染两行当前歌词的帧，确认其与无歌词帧不同且不会超出 JPEG 限制。`--music-design-preview <输出路径>` 导出该确定性帧，供小屏视觉验收。
 - 为同一当前歌词的两个不同位置渲染帧，断言活动指示器使 JPEG 不同；暂停快照保持静态布局。
+- 为 Codex 订阅快照与非 Codex 对照快照渲染圆环，验证平台名、百分比、重置卡和剩余信息卡进入设备 JPEG，且不超过设备字节上限。
+- 删除股票主题和数据源回归：主题目录中不存在 `stocks`，旧版本 `settings.json` 中的股票主题会迁移到 `clock-dot-matrix`，重新保存后不再包含 `Stocks` 字段。

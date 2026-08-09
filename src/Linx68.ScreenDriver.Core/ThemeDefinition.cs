@@ -19,7 +19,7 @@ public enum ThemeDataRequirements
     Lyrics = 1 << 2,
     AiQuota = 1 << 3,
     Weather = 1 << 4,
-    Stocks = 1 << 5
+    CodexTasks = 1 << 5
 }
 
 [Flags]
@@ -30,8 +30,7 @@ public enum ThemeSettingsSections
     Music = 1 << 1,
     Image = 1 << 2,
     AiQuota = 1 << 3,
-    Weather = 1 << 4,
-    Stocks = 1 << 5
+    Weather = 1 << 4
 }
 
 public sealed record ThemeDefinition(
@@ -56,8 +55,8 @@ public sealed record ThemeDefinition(
     public string CategoryDisplayName => Category switch
     {
         ThemeCategory.Monitor => "监控",
-        ThemeCategory.Time => "时间",
-        ThemeCategory.Information => "资讯",
+        ThemeCategory.Time => "时间与天气",
+        ThemeCategory.Information => "Codex 信息",
         ThemeCategory.Music => "音乐",
         ThemeCategory.Matrix => "点阵",
         _ => "其他"

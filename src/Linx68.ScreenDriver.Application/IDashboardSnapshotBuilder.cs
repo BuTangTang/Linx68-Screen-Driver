@@ -10,5 +10,6 @@ public interface IDashboardSnapshotBuilder
         MusicSnapshot music,
         WeatherSettings? effectiveWeatherSettings,
         AiQuotaSnapshot? aiQuota,
+        CodexTaskSnapshot? codexTasks = null,
         CancellationToken cancellationToken = default);
 }

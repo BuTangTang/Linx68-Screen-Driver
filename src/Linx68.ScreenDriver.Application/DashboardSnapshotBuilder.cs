@@ -6,7 +6,6 @@ public sealed class DashboardSnapshotBuilder(
     ISystemSnapshotSource systemSource,
     ILyricsSnapshotSource lyricsSource,
     IWeatherSnapshotSource weatherSource,
-    IStockSnapshotSource stockSource,
     IMusicSnapshotEnricher? musicEnricher = null) : IDashboardSnapshotBuilder
 {
     public async Task<SystemSnapshot> BuildAsync(
@@ -15,6 +14,7 @@ public sealed class DashboardSnapshotBuilder(
         MusicSnapshot music,
         WeatherSettings? effectiveWeatherSettings,
         AiQuotaSnapshot? aiQuota,
+        CodexTaskSnapshot? codexTasks = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(theme);
@@ -41,16 +41,12 @@ public sealed class DashboardSnapshotBuilder(
             && effectiveWeatherSettings is not null
                 ? await weatherSource.ReadAsync(effectiveWeatherSettings, cancellationToken)
                 : null;
-        StockSnapshot? stocks = theme.Requires(ThemeDataRequirements.Stocks)
-            ? await stockSource.ReadAsync(settings.Stocks ?? new StockSettings(), cancellationToken)
-            : null;
-
         return system with
         {
             Music = effectiveMusic,
             AiQuota = aiQuota,
             Weather = weather,
-            Stocks = stocks
+            CodexTasks = codexTasks
         };
     }
 }

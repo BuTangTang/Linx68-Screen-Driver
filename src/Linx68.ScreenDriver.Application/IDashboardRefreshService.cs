@@ -14,7 +14,8 @@ public sealed record DashboardRefreshRequest(
     AppSettings Settings,
     string? SelectedThemeId,
     string? PreviousEffectiveThemeId,
-    Func<CancellationToken, Task<AiQuotaSnapshot?>>? ReadAiQuotaAsync = null);
+    Func<CancellationToken, Task<AiQuotaSnapshot?>>? ReadAiQuotaAsync = null,
+    Func<CancellationToken, Task<CodexTaskSnapshot?>>? ReadCodexTasksAsync = null);
 
 public sealed record DashboardRefreshResult(
     ThemeDefinition EffectiveTheme,

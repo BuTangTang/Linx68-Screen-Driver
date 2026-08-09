@@ -42,23 +42,20 @@ public static class BuiltInThemes
 			Define(Make("dashboard", "状态概览", "四项系统指标集中展示", "紧凑展示 CPU、内存、下载和上传速度。", Dashboard), ThemeCategory.Monitor, ThemeDataRequirements.System, ThemeSettingsSections.System),
 			Define(Make("performance", "性能条带", "纵向性能条与实时负载", "使用高对比度纵向进度条快速查看 CPU 与内存压力。", Performance), ThemeCategory.Monitor, ThemeDataRequirements.System, ThemeSettingsSections.System),
 			Define(Make("network", "网络监控", "突出显示实时上下行速度", "以大号数字展示下载和上传速度，并保留 CPU 与内存摘要。", Network), ThemeCategory.Monitor, ThemeDataRequirements.System, ThemeSettingsSections.System),
-			Define(Make("system-minimal", "状态极简", "仅保留关键系统信息", "无卡片极简排版，适合低干扰桌面。", MinimalSystem), ThemeCategory.Monitor, ThemeDataRequirements.System, ThemeSettingsSections.System),
-			Define(new ClockTheme(), ThemeCategory.Time),
-			Define(Make("clock-neon", "霓虹时钟", "强调色大号数字时钟", "高对比度霓虹风格时间、秒钟和日期。", NeonClock), ThemeCategory.Time),
 			Define(Make("clock-flip", "翻页时钟", "小时与分钟分栏显示", "模拟翻页钟的双卡片布局，并显示秒钟与星期。", FlipClock), ThemeCategory.Time),
-			Define(new FiveDayWeatherTheme(), ThemeCategory.Information, ThemeDataRequirements.Weather, ThemeSettingsSections.Weather),
-			Define(new DotMatrixClockTheme(), ThemeCategory.Matrix),
-			Define(new DotMatrixWeatherClockTheme(), ThemeCategory.Matrix, ThemeDataRequirements.Weather, ThemeSettingsSections.Weather),
+			Define(new FiveDayWeatherTheme(), ThemeCategory.Time, ThemeDataRequirements.Weather, ThemeSettingsSections.Weather),
+			Define(new ClockWeatherTheme(), ThemeCategory.Time, ThemeDataRequirements.Weather, ThemeSettingsSections.Weather),
 			Define(new MusicTheme(lyricOffsetSeconds), ThemeCategory.Music, ThemeDataRequirements.Music | ThemeDataRequirements.Lyrics, ThemeSettingsSections.Music),
-			Define(new AiQuotaTheme(), ThemeCategory.Information, ThemeDataRequirements.AiQuota, ThemeSettingsSections.AiQuota),
-			Define(new StockTheme(), ThemeCategory.Information, ThemeDataRequirements.Stocks, ThemeSettingsSections.Stocks),
-			Define(imageTheme, ThemeCategory.Time, settingsSections: ThemeSettingsSections.Image, isStatic: true)
+			Define(new AiQuotaTheme(), ThemeCategory.Information, ThemeDataRequirements.AiQuota | ThemeDataRequirements.CodexTasks, ThemeSettingsSections.AiQuota),
+			Define(new CodexTasksTheme(), ThemeCategory.Information, ThemeDataRequirements.CodexTasks)
 		};
 	}
 
 	public static string? NormalizeThemeId(string? id) => id?.ToLowerInvariant() switch
 	{
 		"music-cover-focus" or "music-lyric-focus" or "music-pulse" => "music",
+		"stocks" or "system-minimal" or "clock" or "clock-neon" or "clock-dot-matrix" or "clock-weather-dot" or "image" => "clock-weather",
+		"codex-info" => "ai-quota",
 		_ => id
 	};
 

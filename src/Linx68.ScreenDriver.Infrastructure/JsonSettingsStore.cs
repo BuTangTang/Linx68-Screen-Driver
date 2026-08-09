@@ -139,7 +139,7 @@ public sealed class JsonSettingsStore : ISettingsStore
 		bool enableOnlineLyrics = settings.SettingsVersion < 7;
 		settings.SettingsVersion = AppSettings.CurrentSettingsVersion;
 		settings.DeviceEndpoint ??= string.Empty;
-		settings.SelectedThemeId ??= "clock-dot-matrix";
+		settings.SelectedThemeId ??= "clock-weather";
 		settings.AccentColor ??= "#E4694C";
 		settings.SelectedFontId ??= "builtin:segoe-variable-display";
 		settings.SafeArea ??= new ScreenInsets(10, 52, 10, 12);
@@ -166,8 +166,12 @@ public sealed class JsonSettingsStore : ISettingsStore
 		{
 			settings.SelectedThemeId = NormalizeRemovedMusicTheme(settings.SelectedThemeId, "music");
 		}
+		settings.SelectedThemeId = BuiltInThemes.NormalizeThemeId(settings.SelectedThemeId) ?? "clock-weather";
+		if (!Enum.IsDefined(settings.ScreenColorMode))
+		{
+			settings.ScreenColorMode = ScreenColorMode.Night;
+		}
 		settings.Weather ??= new WeatherSettings();
-		settings.Stocks ??= new StockSettings();
 		settings.RefreshSeconds = Math.Clamp(settings.RefreshSeconds, 1, 30);
 		return settings;
 	}

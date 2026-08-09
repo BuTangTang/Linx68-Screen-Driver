@@ -32,37 +32,37 @@ public sealed class ScreenCanvas
 
 	public void Fill(Color color)
 	{
-		_drawing.DrawRectangle(new SolidColorBrush(color), null, new Rect(0.0, 0.0, Profile.Width, Profile.Height));
+		_drawing.DrawRectangle(new SolidColorBrush(ResolveColor(color)), null, new Rect(0.0, 0.0, Profile.Width, Profile.Height));
 	}
 
 	public void Gradient(Color start, Color end, Point startPoint, Point endPoint)
 	{
-		LinearGradientBrush brush = new LinearGradientBrush(start, end, startPoint, endPoint);
+		LinearGradientBrush brush = new LinearGradientBrush(ResolveColor(start), ResolveColor(end), startPoint, endPoint);
 		_drawing.DrawRectangle(brush, null, new Rect(0.0, 0.0, Profile.Width, Profile.Height));
 	}
 
 	public void RoundedRect(Rect rect, double radius, Color fill, Color? stroke = null, double strokeWidth = 1.0)
 	{
-		Pen? pen = stroke.HasValue ? new Pen(new SolidColorBrush(stroke.Value), strokeWidth) : null;
-		_drawing.DrawRoundedRectangle(new SolidColorBrush(fill), pen, rect, radius, radius);
+		Pen? pen = stroke.HasValue ? new Pen(new SolidColorBrush(ResolveColor(stroke.Value)), strokeWidth) : null;
+		_drawing.DrawRoundedRectangle(new SolidColorBrush(ResolveColor(fill)), pen, rect, radius, radius);
 	}
 
 	public void RoundedGradientRect(Rect rect, double radius, Color start, Color end, Color? stroke = null, double strokeWidth = 1.0)
 	{
-		Pen? pen = stroke.HasValue ? new Pen(new SolidColorBrush(stroke.Value), strokeWidth) : null;
-		LinearGradientBrush brush = new LinearGradientBrush(start, end, new Point(0, 0), new Point(1, 1));
+		Pen? pen = stroke.HasValue ? new Pen(new SolidColorBrush(ResolveColor(stroke.Value)), strokeWidth) : null;
+		LinearGradientBrush brush = new LinearGradientBrush(ResolveColor(start), ResolveColor(end), new Point(0, 0), new Point(1, 1));
 		_drawing.DrawRoundedRectangle(brush, pen, rect, radius, radius);
 	}
 
 	public void Ellipse(Rect rect, Color fill, Color? stroke = null, double strokeWidth = 1.0)
 	{
-		Pen? pen = stroke.HasValue ? new Pen(new SolidColorBrush(stroke.Value), strokeWidth) : null;
-		_drawing.DrawEllipse(new SolidColorBrush(fill), pen, new Point(rect.X + rect.Width / 2.0, rect.Y + rect.Height / 2.0), rect.Width / 2.0, rect.Height / 2.0);
+		Pen? pen = stroke.HasValue ? new Pen(new SolidColorBrush(ResolveColor(stroke.Value)), strokeWidth) : null;
+		_drawing.DrawEllipse(new SolidColorBrush(ResolveColor(fill)), pen, new Point(rect.X + rect.Width / 2.0, rect.Y + rect.Height / 2.0), rect.Width / 2.0, rect.Height / 2.0);
 	}
 
 	public void Text(string value, double size, Color color, Point origin, FontWeight? weight = null, TextAlignment alignment = TextAlignment.Left, double maxWidth = double.PositiveInfinity, double maxHeight = double.PositiveInfinity)
 	{
-		FormattedText formattedText = new FormattedText(value, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily, FontStyles.Normal, weight ?? FontWeights.Normal, FontStretches.Normal), size, new SolidColorBrush(color), 1.0);
+		FormattedText formattedText = new FormattedText(value, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily, FontStyles.Normal, weight ?? FontWeights.Normal, FontStretches.Normal), size, new SolidColorBrush(ResolveColor(color)), 1.0);
 		formattedText.TextAlignment = alignment;
 		if (!double.IsPositiveInfinity(maxWidth))
 		{
@@ -132,7 +132,7 @@ public sealed class ScreenCanvas
 
 	public void AlignedText(string value, double size, Color color, Rect bounds, FontWeight? weight = null, TextAlignment alignment = TextAlignment.Left, FontFamily? fontFamily = null)
 	{
-		FormattedText formattedText = new FormattedText(value, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(fontFamily ?? FontFamily, FontStyles.Normal, weight ?? FontWeights.Normal, FontStretches.Normal), size, new SolidColorBrush(color), 1.0);
+		FormattedText formattedText = new FormattedText(value, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(fontFamily ?? FontFamily, FontStyles.Normal, weight ?? FontWeights.Normal, FontStretches.Normal), size, new SolidColorBrush(ResolveColor(color)), 1.0);
 		Geometry glyphs = formattedText.BuildGeometry(new Point());
 		Rect inkBounds = glyphs.Bounds;
 		if (inkBounds.IsEmpty)
@@ -151,14 +151,14 @@ public sealed class ScreenCanvas
 	}
 	public void Line(Point start, Point end, Color color, double thickness = 1.0)
 	{
-		_drawing.DrawLine(new Pen(new SolidColorBrush(color), thickness), start, end);
+		_drawing.DrawLine(new Pen(new SolidColorBrush(ResolveColor(color)), thickness), start, end);
 	}
 
 	public void Path(Geometry geometry, Color stroke, double thickness = 1.0, Color? fill = null)
 	{
 		ArgumentNullException.ThrowIfNull(geometry);
-		Brush? fillBrush = fill.HasValue ? new SolidColorBrush(fill.Value) : null;
-		_drawing.DrawGeometry(fillBrush, new Pen(new SolidColorBrush(stroke), thickness), geometry);
+		Brush? fillBrush = fill.HasValue ? new SolidColorBrush(ResolveColor(fill.Value)) : null;
+		_drawing.DrawGeometry(fillBrush, new Pen(new SolidColorBrush(ResolveColor(stroke)), thickness), geometry);
 	}
 	public void ProgressBar(Rect rect, double percent, Color track, Color fill)
 	{
@@ -274,5 +274,37 @@ public sealed class ScreenCanvas
 		FormattedText formattedText = new FormattedText(value, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
 			new Typeface(FontFamily, FontStyles.Normal, weight ?? FontWeights.Normal, FontStretches.Normal), size, Brushes.Transparent, 1.0);
 		return formattedText.WidthIncludingTrailingWhitespace;
+	}
+
+	private Color ResolveColor(Color color)
+	{
+		if (DisplayOptions.ColorMode != ScreenColorMode.Daylight || color.A == 0)
+		{
+			return color;
+		}
+
+		if (IsAccent(color))
+		{
+			return color;
+		}
+
+		double luminance = (0.2126 * color.R + 0.7152 * color.G + 0.0722 * color.B) / 255.0;
+		Color mapped = luminance switch
+		{
+			<= 0.045 => Color.FromRgb(248, 247, 243),
+			<= 0.10 => Colors.White,
+			<= 0.22 => Color.FromRgb(220, 226, 232),
+			<= 0.58 => Color.FromRgb(112, 118, 125),
+			_ => Color.FromRgb(23, 25, 28)
+		};
+
+		return Color.FromArgb(color.A, mapped.R, mapped.G, mapped.B);
+	}
+
+	private bool IsAccent(Color color)
+	{
+		return Math.Abs(color.R - AccentColor.R) <= 3
+			&& Math.Abs(color.G - AccentColor.G) <= 3
+			&& Math.Abs(color.B - AccentColor.B) <= 3;
 	}
 }

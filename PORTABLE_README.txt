@@ -9,7 +9,7 @@
 
 隐私提醒
 
-- Data\settings.json 包含设备地址、城市、股票代码和本地图片路径。
+- Data\settings.json 包含设备地址、城市和本地图片路径。
 - Data\MiMoWebView2 包含小米登录浏览器资料，不要分享或上传 Data 文件夹。
 - Codex 的 auth.json 和系统凭据属于登录令牌，程序不会导出、导入或读取它们；不要手动分享。
 - 关闭程序后删除 Data\MiMoWebView2 可清除本地保存的小米登录状态。
@@ -19,8 +19,7 @@
 
 - 天气数据由 Open-Meteo 提供，采用 CC BY 4.0：
   https://open-meteo.com/en/license
-- Yahoo Finance 股票数据与 Xiaomi MiMo 用量功能均为非官方实验性集成，可能延迟、不准确或失效。
-- 股票数据仅供信息展示，不构成投资建议。
+- Xiaomi MiMo 用量功能为非官方实验性集成，可能延迟、不准确或失效。
 - 本项目与 Linx68 品牌、设备制造商及上述平台不存在隶属、授权、认可或赞助关系。
 
 许可证

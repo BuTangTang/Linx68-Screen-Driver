@@ -20,20 +20,10 @@ public partial class FeatureNoticeWindow : Window
         DetailsList.ItemsSource = details;
     }
 
-    public static FeatureNoticeWindow CreateStockNotice() => new(
-        "股票数据说明",
-        "使用前，请了解实验性数据来源",
-        "股票主题使用 Yahoo Finance 的公开网页数据接口，不属于官方稳定 API。",
-        [
-            "行情可能延迟、不准确或随时不可用",
-            "数据仅用于桌面信息展示，不构成投资建议",
-            "请勿依赖该功能进行交易或其他重要决策"
-        ]);
-
     public static FeatureNoticeWindow CreateMiMoNotice() => new(
         "MiMo 用量说明",
         "使用前，请了解非官方集成方式",
-        "AI 用量主题读取你在 Xiaomi MiMo 控制台中的登录会话与套餐数据，不属于小米官方集成。",
+        "额度主题读取你在 Xiaomi MiMo 控制台中的登录会话与套餐数据，不属于小米官方集成。",
         [
             "登录状态仅保存在本机 WebView2 数据目录",
             "平台页面或接口变化可能导致功能失效",
@@ -43,7 +33,7 @@ public partial class FeatureNoticeWindow : Window
     public static FeatureNoticeWindow CreateCodexNotice() => new(
         "Codex 额度说明",
         "显示当前 ChatGPT Codex 额度窗口",
-        "AI 用量主题通过本机 Codex App Server 读取当前剩余比例、额度窗口和下次重置时间。",
+        "Codex 额度主题通过本机 Codex App Server 读取当前剩余比例、额度窗口和下次重置时间。",
         [
             "需要在本机完成 Codex 的 ChatGPT 登录，API Key 登录不提供订阅额度窗口",
             "本应用只读取额度结果，不会读取、复制或导出 auth.json、账号令牌或系统凭据",

@@ -7,7 +7,8 @@ using Linx68.ScreenDriver.Core;
 using Linx68.ScreenDriver.Infrastructure;
 
 var defaults = new AppSettings();
-Assert(defaults.SelectedThemeId == "clock-dot-matrix", "first-run theme must default to dot-matrix clock");
+Assert(defaults.SelectedThemeId == "clock-weather", "first-run theme must default to clock-and-weather");
+Assert(defaults.ScreenColorMode == ScreenColorMode.Night, "first-run screen color mode must preserve night appearance");
 Assert(defaults.AccentColor == "#E4694C", "first-run accent color is incorrect");
 Assert(defaults.AutoPush && defaults.RefreshSeconds == 1, "first-run automation defaults are incorrect");
 Assert(defaults.MinimizeToTray && defaults.CloseToTray, "first-run tray defaults are incorrect");
@@ -103,16 +104,20 @@ Assert(profile.SafeArea.Top + profile.SafeArea.Bottom < profile.Height, "safe ar
 var renderer = new ScreenRenderer(profile);
 var themeDefinitions = BuiltInThemes.CreateDefinitions(new ImageTheme());
 var themes = themeDefinitions.Select(definition => definition.Theme).ToArray();
-Assert(themes.Length == 15, "built-in theme catalog should contain the 15 supported schemes");
+Assert(themes.Length == 10, "built-in theme catalog should contain the 10 confirmed schemes");
 Assert(themes.All(theme => theme.Id is not "calendar" and not "ambient"), "removed calendar/ambient themes must not be registered");
 Assert(themes.All(theme => theme.Id != "clock-seconds"), "removed seconds progress theme must not be registered");
 Assert(themes.All(theme => theme.Id != "week"), "removed week calendar theme must not be registered");
-Assert(themes.Single(theme => theme.Id == "clock-dot-matrix").DisplayName == "点阵时钟", "dot-matrix clock theme must be registered");
-Assert(themes.Single(theme => theme.Id == "clock-weather-dot").DisplayName == "点阵时钟天气", "dot-matrix weather clock theme must be registered");
-Assert(themes.Single(theme => theme.Id == "image").DisplayName == "图片时间", "image theme must be named 图片时间");
-Assert(themes.Single(theme => theme.Id == "ai-quota").DisplayName == "AI 用量（测试版）", "AI quota theme must carry the Chinese test-version label");
+Assert(themes.All(theme => theme.Id is not "system-minimal" and not "clock" and not "clock-neon" and not "clock-dot-matrix" and not "clock-weather-dot" and not "image"),
+    "removed minimal, neon, dot-matrix and image themes must not be registered");
+Assert(themes.Single(theme => theme.Id == "clock-weather").DisplayName == "时钟天气", "clock-and-weather theme must be registered");
+Assert(themes.All(theme => theme.Id != "codex-info"), "removed combined Codex information theme must not be registered");
+Assert(themes.Single(theme => theme.Id == "ai-quota").DisplayName == "Codex 额度", "Codex quota theme must use its final display label");
+Assert(themes.Single(theme => theme.Id == "codex-tasks").DisplayName == "Codex 任务", "Codex task theme must be registered");
 Assert(themes.Any(theme => theme.Id == "weather-five-day"), "five-day weather theme must be registered");
-Assert(themes.Any(theme => theme.Id == "stocks"), "stock theme must be registered");
+Assert(themes.All(theme => theme.Id != "stocks"), "removed stock theme must not be registered");
+Assert(BuiltInThemes.NormalizeThemeId("stocks") == "clock-weather", "legacy stock theme must migrate to clock-and-weather");
+Assert(BuiltInThemes.NormalizeThemeId("codex-info") == "ai-quota", "legacy combined Codex theme must migrate to Codex quota");
 Assert(themes.Where(theme => theme.Id.StartsWith("music", StringComparison.OrdinalIgnoreCase)).Select(theme => theme.Id)
            .OrderBy(id => id)
            .SequenceEqual(["music"])
@@ -120,38 +125,46 @@ Assert(themes.Where(theme => theme.Id.StartsWith("music", StringComparison.Ordin
     "the music catalog must contain only the confirmed cover-and-lyrics presentation");
 Assert(themes.Select(theme => theme.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() == themes.Length, "theme ids should be unique");
 Assert(themeDefinitions.All(definition => definition.Category != ThemeCategory.Other), "every built-in theme must declare a category");
-Assert(themeDefinitions.Single(definition => definition.Id == "image").IsStatic, "image theme must declare static rendering");
-Assert(themeDefinitions.Single(definition => definition.Id == "weather-five-day").Requires(ThemeDataRequirements.Weather), "weather theme must declare its data requirement");
+Assert(themeDefinitions.Single(definition => definition.Id == "weather-five-day").Requires(ThemeDataRequirements.Weather)
+       && themeDefinitions.Single(definition => definition.Id == "clock-weather").Requires(ThemeDataRequirements.Weather),
+    "weather presentations must declare their data requirement");
+Assert(themeDefinitions.Single(definition => definition.Id == "weather-five-day").Category == ThemeCategory.Time
+       && themeDefinitions.Where(definition => definition.Category == ThemeCategory.Information)
+           .Select(definition => definition.Id)
+           .OrderBy(id => id)
+           .SequenceEqual(["ai-quota", "codex-tasks"])
+       && themeDefinitions.All(definition => definition.Category != ThemeCategory.Matrix),
+    "five-day weather must belong to time-and-weather while confirmed Codex presentations share the information category");
 Assert(themeDefinitions.Single(definition => definition.Id == "music").Requires(ThemeDataRequirements.Lyrics), "music theme must declare its optional lyrics requirement");
+Assert(themeDefinitions.Single(definition => definition.Id == "ai-quota").Requires(ThemeDataRequirements.CodexTasks)
+       && themeDefinitions.Single(definition => definition.Id == "codex-tasks").Requires(ThemeDataRequirements.CodexTasks),
+    "Codex task presentations must declare their task-data requirement");
 Assert(themes.Single(theme => theme.Id == "music").Description == "封面与连续同步歌词",
     "the single music card must use a compact, non-wrapping description");
 Assert(themeDefinitions.Where(definition => definition.Category == ThemeCategory.Music)
            .All(definition => definition.Requires(ThemeDataRequirements.Music | ThemeDataRequirements.Lyrics)),
     "all music presentation variants must request media and lyrics data");
-Assert(themeDefinitions.Single(definition => definition.Id == "stocks").Shows(ThemeSettingsSections.Stocks), "stock theme must expose stock settings");
 Console.WriteLine("PASS built-in theme metadata, requirements and settings sections");
 
 var pipelineSystem = new StubSystemSnapshotSource();
 var pipelineLyrics = new StubLyricsSnapshotSource();
 var pipelineWeather = new StubWeatherSnapshotSource();
-var pipelineStocks = new StubStockSnapshotSource();
 var pipelineEnricher = new StubMusicSnapshotEnricher();
 var snapshotBuilder = new DashboardSnapshotBuilder(
     pipelineSystem,
     pipelineLyrics,
     pipelineWeather,
-    pipelineStocks,
     pipelineEnricher);
 var pipelineSettings = new AppSettings();
-var clockSnapshot = await snapshotBuilder.BuildAsync(
-    themeDefinitions.Single(definition => definition.Id == "clock"),
+var dashboardSnapshot = await snapshotBuilder.BuildAsync(
+    themeDefinitions.Single(definition => definition.Id == "dashboard"),
     pipelineSettings,
     SystemSnapshot.DesignSample.Music!,
     effectiveWeatherSettings: null,
     aiQuota: null);
-Assert(clockSnapshot.Music is not null, "snapshot pipeline must preserve the supplied media snapshot");
-Assert(pipelineLyrics.ReadCount == 0 && pipelineEnricher.ReadCount == 0 && pipelineWeather.ReadCount == 0 && pipelineStocks.ReadCount == 0,
-    "clock theme must not invoke optional data sources");
+Assert(dashboardSnapshot.Music is not null, "snapshot pipeline must preserve the supplied media snapshot");
+Assert(pipelineLyrics.ReadCount == 0 && pipelineEnricher.ReadCount == 0 && pipelineWeather.ReadCount == 0,
+    "dashboard theme must not invoke optional data sources");
 pipelineSettings.Music.EnableOnlineLyrics = false;
 var musicArtworkSnapshot = await snapshotBuilder.BuildAsync(
     themeDefinitions.Single(definition => definition.Id == "music"),
@@ -177,8 +190,8 @@ _ = await snapshotBuilder.BuildAsync(
     SystemSnapshot.DesignSample.Music!,
     new WeatherSettings { LocationQuery = "北京" },
     aiQuota: null);
-Assert(pipelineWeather.ReadCount == 1 && pipelineStocks.ReadCount == 0,
-    "weather theme must invoke only the weather source");
+Assert(pipelineWeather.ReadCount == 1,
+    "weather theme must invoke the weather source");
 Console.WriteLine("PASS metadata-driven dashboard snapshot pipeline");
 
 var refreshMusic = new StubMusicSnapshotSource(SystemSnapshot.DesignSample.Music! with
@@ -187,12 +200,10 @@ var refreshMusic = new StubMusicSnapshotSource(SystemSnapshot.DesignSample.Music
 });
 var refreshLyrics = new StubLyricsSnapshotSource();
 var refreshWeather = new StubWeatherSnapshotSource();
-var refreshStocks = new StubStockSnapshotSource();
 var refreshSnapshotBuilder = new DashboardSnapshotBuilder(
     new StubSystemSnapshotSource(),
     refreshLyrics,
-    refreshWeather,
-    refreshStocks);
+    refreshWeather);
 var refreshWeatherResolver = new StubWeatherSettingsResolver(
     new WeatherSettingsResolution(new WeatherSettings { LocationQuery = "北京" }, true));
 var refreshService = new DashboardRefreshService(
@@ -207,8 +218,8 @@ refreshSettings.Music.EnableOnlineLyrics = true;
 var refreshResult = await refreshService.RefreshAsync(new DashboardRefreshRequest(
     themeDefinitions,
     refreshSettings,
-    "clock",
-    "clock",
+    "dashboard",
+    "dashboard",
     _ => throw new InvalidOperationException("AI source must not be read for a music theme.")));
 Assert(refreshResult.EffectiveTheme.Id == "music" && refreshResult.EffectiveThemeChanged,
     "refresh service must switch to the music theme while media is playing");
@@ -225,6 +236,11 @@ Assert(refreshResult.EffectiveTheme.Id == "music",
 
 refreshSettings.AutoSwitchToMusic = false;
 int aiReadCount = 0;
+int codexTaskReadCount = 0;
+var refreshTasks = new CodexTaskSnapshot(
+    true,
+    [new CodexTaskItem("修复小屏任务卡", CodexTaskStatus.Active, DateTimeOffset.UtcNow)],
+    DateTimeOffset.UtcNow);
 refreshResult = await refreshService.RefreshAsync(new DashboardRefreshRequest(
     themeDefinitions,
     refreshSettings,
@@ -234,9 +250,26 @@ refreshResult = await refreshService.RefreshAsync(new DashboardRefreshRequest(
     {
         aiReadCount++;
         return Task.FromResult<AiQuotaSnapshot?>(AiQuotaSnapshot.ForSubscription("Test", 50));
+    },
+    _ =>
+    {
+        codexTaskReadCount++;
+        return Task.FromResult<CodexTaskSnapshot?>(refreshTasks);
     }));
-Assert(refreshResult.EffectiveTheme.Id == "ai-quota" && aiReadCount == 1,
-    "refresh service must request AI data only for an AI theme");
+Assert(refreshResult.EffectiveTheme.Id == "ai-quota" && aiReadCount == 1 && codexTaskReadCount == 1
+       && refreshResult.Snapshot.CodexTasks == refreshTasks,
+    "quota theme must request AI and Codex task data only when required");
+
+refreshResult = await refreshService.RefreshAsync(new DashboardRefreshRequest(
+    themeDefinitions,
+    refreshSettings,
+    "codex-tasks",
+    refreshResult.EffectiveTheme.Id,
+    _ => throw new InvalidOperationException("AI source must not be read for the tasks-only theme."),
+    _ => Task.FromResult<CodexTaskSnapshot?>(refreshTasks)));
+Assert(refreshResult.EffectiveTheme.Id == "codex-tasks" && refreshResult.Snapshot.AiQuota is null
+       && refreshResult.Snapshot.CodexTasks == refreshTasks,
+    "tasks-only theme must request Codex task data without requesting quota data");
 
 refreshResult = await refreshService.RefreshAsync(new DashboardRefreshRequest(
     themeDefinitions,
@@ -307,6 +340,152 @@ Assert(codexQuota.PlatformName == "Codex"
     "Codex rate-limit response must produce the remaining percentage and reset window");
 Console.WriteLine("PASS Codex rate-limit quota parsing");
 
+using var codexTaskDocument = JsonDocument.Parse(
+    """
+    {
+      "data": [
+        {
+          "id": "task-approval",
+          "name": "等待确认的设备帧验收",
+          "preview": "this prompt must not reach the device screen",
+          "updatedAt": 1781654000,
+          "status": { "type": "active", "activeFlags": ["waitingOnApproval"] }
+        },
+        {
+          "id": "task-active",
+          "name": "进行中的歌词优化",
+          "updatedAt": 1781654100,
+          "status": { "type": "active" }
+        },
+        {
+          "id": "task-recent",
+          "name": "最近更新的额度主题",
+          "updatedAt": 1781654200,
+          "status": { "type": "idle" }
+        },
+        {
+          "id": "task-unnamed",
+          "preview": "never use this preview as a task title",
+          "updatedAt": 1781654300,
+          "status": { "type": "idle" }
+        }
+      ]
+    }
+    """);
+var parsedTasks = CodexTaskSnapshotSource.ParseThreadList(
+    codexTaskDocument.RootElement,
+    DateTimeOffset.FromUnixTimeSeconds(1781654400));
+IReadOnlyList<CodexTaskItem> displayTasks = parsedTasks.GetDisplayTasks(4);
+Assert(parsedTasks.Available && parsedTasks.Tasks.Count == 4
+       && parsedTasks.Tasks.All(task => !task.Title.Contains("preview", StringComparison.OrdinalIgnoreCase))
+       && displayTasks[0].Status == CodexTaskStatus.WaitingForApproval
+       && displayTasks[0].Title == "等待确认的设备帧验收"
+       && displayTasks.Count == 2
+       && displayTasks[1].Status == CodexTaskStatus.Active
+       && displayTasks.All(task => task.Status != CodexTaskStatus.Recent),
+    "Codex task parser must retain only safe active or confirmed-completed tasks");
+using var activeTurnDocument = JsonDocument.Parse("""{ "data": [{ "status": "inProgress" }] }""");
+using var completedTurnDocument = JsonDocument.Parse("""{ "data": [{ "status": "completed", "completedAt": 1786176900 }] }""");
+var codexTaskStartInfo = CodexTaskSnapshotSource.CreateStartInfo();
+Assert(CodexTaskSnapshotSource.IsInProgressTurn(activeTurnDocument.RootElement)
+       && CodexTaskSnapshotSource.GetLatestTurnStatus(completedTurnDocument.RootElement) == CodexTaskStatus.Completed
+       && CodexTaskSnapshotSource.GetLatestTurnCompletedAt(completedTurnDocument.RootElement) == DateTimeOffset.FromUnixTimeSeconds(1786176900)
+       && CodexTaskSnapshotSource.ReadOnlyRequestMethods.SequenceEqual(
+           ["initialize", "initialized", "thread/list", "thread/turns/list"])
+       && codexTaskStartInfo.StandardInputEncoding?.GetPreamble().Length == 0
+       && codexTaskStartInfo.StandardOutputEncoding == System.Text.Encoding.UTF8
+       && codexTaskStartInfo.StandardErrorEncoding == System.Text.Encoding.UTF8,
+    "Codex task source must recognize a real active turn through the approved read-only method");
+string directPlanInput = JsonSerializer.Serialize(new
+{
+    plan = new[]
+    {
+        new { step = "读取计划", status = "completed" },
+        new { step = "渲染进度", status = "completed" },
+        new { step = "验证界面", status = "in_progress" }
+    }
+});
+string directPlanLine = JsonSerializer.Serialize(new
+{
+    type = "response_item",
+    payload = new { type = "custom_tool_call", name = "update_plan", input = directPlanInput }
+});
+string nestedPlanLine = JsonSerializer.Serialize(new
+{
+    type = "response_item",
+    payload = new
+    {
+        type = "custom_tool_call",
+        name = "exec",
+        input = "const result = await tools.update_plan({plan:[{step:\"读取计划\",status:\"completed\"},{step:\"渲染进度\",status:\"completed\"},{step:\"验证界面\",status:\"in_progress\"}]}); text(result);"
+    }
+});
+Assert(CodexTaskSnapshotSource.TryParsePlanProgressFromRolloutLine(directPlanLine, out int directCompleted, out int directTotal)
+       && directCompleted == 2 && directTotal == 3
+       && CodexTaskSnapshotSource.TryParsePlanProgressFromRolloutLine(nestedPlanLine, out int nestedCompleted, out int nestedTotal)
+       && nestedCompleted == 2 && nestedTotal == 3
+       && !CodexTaskSnapshotSource.TryParsePlanProgressFromRolloutLine("not json", out _, out _),
+    "Codex task source must count only plan statuses from direct and nested update-plan calls");
+DateTimeOffset renderedCompletedAt = new(2026, 8, 8, 16, 15, 0, TimeSpan.FromHours(8));
+DateTimeOffset renderedUpdatedAt = renderedCompletedAt.AddMinutes(-3);
+Assert(CodexTaskCardRenderer.GetDetail(
+           new CodexTaskItem("有计划", CodexTaskStatus.Active, renderedUpdatedAt, 2, 3),
+           CodexTaskStatus.Active) == "2/3"
+       && CodexTaskCardRenderer.GetDetail(
+           new CodexTaskItem("无计划", CodexTaskStatus.Completed, renderedUpdatedAt, CompletedAt: renderedCompletedAt),
+           CodexTaskStatus.Completed) == renderedCompletedAt.ToLocalTime().ToString("HH:mm")
+       && CodexTaskCardRenderer.GetDetail(
+           new CodexTaskItem("运行中无计划", CodexTaskStatus.Active, renderedUpdatedAt),
+           CodexTaskStatus.Active) == renderedUpdatedAt.ToLocalTime().ToString("HH:mm"),
+    "task detail must prefer real plan progress, then completion time, then active update time");
+Assert(CodexTaskSnapshotSource.TryParseProtocolMessage(
+           "diagnostic prefix {\"id\":2,\"result\":{\"data\":[]}}thread/status noise",
+           out JsonElement noisyProtocolMessage)
+       && noisyProtocolMessage.GetProperty("id").GetInt32() == 2,
+    "Codex task source must tolerate non-JSON text around one complete protocol message");
+Assert(CodexTaskSnapshotSource.TryParseProtocolResponse(
+           "{\"method\":\"thread/status/changed\",\"params\":{}}{\"id\":2,\"result\":{\"data\":[]}}",
+           2,
+           out JsonElement concatenatedProtocolResponse)
+       && concatenatedProtocolResponse.GetProperty("id").GetInt32() == 2,
+    "Codex task source must retain a response concatenated after a notification on the same line");
+string localRolloutPath = Path.Combine(Path.GetTempPath(), $"linx68-codex-rollout-{Guid.NewGuid():N}.jsonl");
+DateTimeOffset localActivityObservedAt = DateTimeOffset.UtcNow;
+try
+{
+    File.WriteAllText(localRolloutPath,
+        "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\"}}\n");
+    File.SetLastWriteTimeUtc(localRolloutPath, localActivityObservedAt.UtcDateTime);
+    Assert(CodexTaskSnapshotSource.IsLocallyActiveRollout(localRolloutPath, localActivityObservedAt),
+        "a recently written rollout without a completion marker must represent cross-process active work");
+
+    File.WriteAllText(localRolloutPath,
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\"}}\n");
+    File.SetLastWriteTimeUtc(localRolloutPath, localActivityObservedAt.UtcDateTime);
+    Assert(CodexTaskSnapshotSource.IsLocallyActiveRollout(localRolloutPath, localActivityObservedAt),
+        "continued recent rollout writes must keep a long-running turn active after its start marker leaves the bounded tail");
+
+    File.AppendAllText(localRolloutPath,
+        "{\"timestamp\":\"2026-08-08T08:15:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\"}}\n");
+    File.SetLastWriteTimeUtc(localRolloutPath, localActivityObservedAt.UtcDateTime);
+    Assert(!CodexTaskSnapshotSource.IsLocallyActiveRollout(localRolloutPath, localActivityObservedAt)
+           && CodexTaskSnapshotSource.GetLocalRolloutStatus(localRolloutPath, localActivityObservedAt) == CodexTaskStatus.Completed
+           && CodexTaskSnapshotSource.GetLocalRolloutCompletedAt(localRolloutPath, localActivityObservedAt)
+               == new DateTimeOffset(2026, 8, 8, 8, 15, 0, TimeSpan.Zero),
+        "a rollout completion marker must immediately produce a confirmed-completed state");
+
+    File.WriteAllText(localRolloutPath,
+        "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\"}}\n");
+    File.SetLastWriteTimeUtc(localRolloutPath, localActivityObservedAt.AddMinutes(-3).UtcDateTime);
+    Assert(!CodexTaskSnapshotSource.IsLocallyActiveRollout(localRolloutPath, localActivityObservedAt),
+        "an abandoned rollout must not remain active after its local activity window expires");
+}
+finally
+{
+    File.Delete(localRolloutPath);
+}
+Console.WriteLine("PASS Codex task parsing, prioritization and read-only request boundary");
+
 if (args.Contains("--codex-rate-probe", StringComparer.OrdinalIgnoreCase))
 {
     var liveCodexQuota = await new CodexQuotaSnapshotSource().ReadAsync();
@@ -315,11 +494,46 @@ if (args.Contains("--codex-rate-probe", StringComparer.OrdinalIgnoreCase))
     Console.WriteLine("PASS live Codex rate-limit read");
 }
 
+if (args.Contains("--codex-task-probe", StringComparer.OrdinalIgnoreCase))
+{
+    var liveCodexTasks = await new CodexTaskSnapshotSource().ReadAsync();
+    Assert(liveCodexTasks.Available && liveCodexTasks.Tasks.All(task => !string.IsNullOrWhiteSpace(task.Title)),
+        "live Codex App Server task read must return display-safe task summaries");
+    Console.WriteLine($"PASS live Codex task read count={liveCodexTasks.Tasks.Count}; statuses={string.Join(',', liveCodexTasks.Tasks.Select(task => task.Status).Distinct())}; plans={string.Join(',', liveCodexTasks.Tasks.Where(task => task.HasPlanProgress).Select(task => $"{task.CompletedPlanSteps}/{task.TotalPlanSteps}"))}");
+}
+
+int codexRolloutProbeIndex = Array.IndexOf(args, "--codex-rollout-probe");
+if (codexRolloutProbeIndex >= 0)
+{
+    Assert(codexRolloutProbeIndex + 1 < args.Length, "--codex-rollout-probe requires a rollout path");
+    string rolloutPath = Path.GetFullPath(args[codexRolloutProbeIndex + 1]);
+    bool hasPlan = CodexTaskSnapshotSource.TryReadLatestPlanProgress(rolloutPath, out int completedSteps, out int totalSteps);
+    int planMentions = 0;
+    int parsedPlans = 0;
+    using var rolloutStream = new FileStream(rolloutPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+    using var rolloutReader = new StreamReader(rolloutStream);
+    while (rolloutReader.ReadLine() is { } line)
+    {
+        if (!line.Contains("update_plan", StringComparison.Ordinal))
+        {
+            continue;
+        }
+
+        planMentions++;
+        if (CodexTaskSnapshotSource.TryParsePlanProgressFromRolloutLine(line, out _, out _))
+        {
+            parsedPlans++;
+        }
+    }
+    Console.WriteLine($"PASS live Codex rollout plan read hasPlan={hasPlan}; progress={completedSteps}/{totalSteps}; mentions={planMentions}; parsed={parsedPlans}");
+}
+
 var subscriptionQuota = AiQuotaSnapshot.ForSubscription(
     "Codex",
     56,
     remainingCount: 1,
-    resetPeriod: AiResetPeriod.Weekly);
+    resetPeriod: AiResetPeriod.Weekly,
+    resetsAt: new DateTimeOffset(2026, 8, 9, 18, 42, 0, TimeSpan.Zero));
 Assert(subscriptionQuota.RemainingDisplay == "56% / 1次", "subscription quota display is incorrect");
 Assert(subscriptionQuota.ResetPeriod == AiResetPeriod.Weekly, "subscription reset period was not retained");
 Assert(SystemSnapshot.DesignSample.AiQuota?.PlatformName == "Codex",
@@ -470,22 +684,88 @@ if (musicMotionPreviewArgumentIndex >= 0)
     Console.WriteLine($"PASS wrote live music motion previews after {warmupSeconds:0.0}s at {before.Position:c} ({beforeContext.Current?.Text ?? "即将开始"}) and {after.Position:c} ({afterContext.Current?.Text ?? "即将开始"}) to {outputDirectory}");
 }
 
+var quotaTaskSnapshot = new CodexTaskSnapshot(
+    true,
+    [
+        new CodexTaskItem("设计四条 Codex 任务小屏界面", CodexTaskStatus.Active, DateTimeOffset.UtcNow, 2, 4),
+        new CodexTaskItem("完成歌词连续刷新与视觉验收", CodexTaskStatus.Completed, DateTimeOffset.UtcNow.AddMinutes(-12)),
+        new CodexTaskItem("校准额度圆环与具体重置时间", CodexTaskStatus.Completed, DateTimeOffset.UtcNow.AddMinutes(-28)),
+        new CodexTaskItem("处理一个很长很长很长的任务标题，确认小屏不会让右侧状态与标题发生重叠", CodexTaskStatus.Completed, DateTimeOffset.UtcNow.AddHours(-1))
+    ],
+    DateTimeOffset.UtcNow);
 var subscriptionFrame = renderer.Render(
     aiQuotaTheme,
-    SystemSnapshot.DesignSample with { AiQuota = subscriptionQuota });
-Assert(subscriptionFrame.JpegBytes is [0xFF, 0xD8, ..], "subscription AI quota theme did not render");
+    SystemSnapshot.DesignSample with { AiQuota = subscriptionQuota, CodexTasks = quotaTaskSnapshot });
+Assert(subscriptionFrame.JpegBytes is [0xFF, 0xD8, ..]
+       && subscriptionFrame.JpegBytes.Length <= profile.MaxJpegBytes,
+    "subscription AI quota theme with tasks did not render");
 
 var alternatePlatformFrame = renderer.Render(
     aiQuotaTheme,
-    SystemSnapshot.DesignSample with { AiQuota = subscriptionQuota with { PlatformName = "MiMo" } });
+    SystemSnapshot.DesignSample with { AiQuota = subscriptionQuota with { PlatformName = "MiMo" }, CodexTasks = null });
 Assert(!subscriptionFrame.JpegBytes.SequenceEqual(alternatePlatformFrame.JpegBytes),
     "the quota device frame must render its current platform label instead of a hard-coded Codex name");
 
+var fullQuotaFrame = renderer.Render(
+    aiQuotaTheme,
+    SystemSnapshot.DesignSample with
+    {
+        AiQuota = AiQuotaSnapshot.ForSubscription("Codex", 100, remainingCount: 3, resetPeriod: AiResetPeriod.Weekly,
+            resetsAt: new DateTimeOffset(2026, 8, 9, 18, 42, 0, TimeSpan.Zero)),
+        CodexTasks = quotaTaskSnapshot
+    });
+Assert(fullQuotaFrame.JpegBytes is [0xFF, 0xD8, ..]
+       && fullQuotaFrame.JpegBytes.Length <= profile.MaxJpegBytes
+       && !fullQuotaFrame.JpegBytes.SequenceEqual(subscriptionFrame.JpegBytes),
+    "full quota must render a complete device-compatible circular gauge");
+
+var autoRenewQuotaFrame = renderer.Render(
+    aiQuotaTheme,
+    SystemSnapshot.DesignSample with
+    {
+        AiQuota = AiQuotaSnapshot.ForSubscription("Codex", 0, resetPeriod: AiResetPeriod.Weekly),
+        CodexTasks = CodexTaskSnapshot.Unavailable(DateTimeOffset.UtcNow)
+    });
+Assert(autoRenewQuotaFrame.JpegBytes is [0xFF, 0xD8, ..]
+       && autoRenewQuotaFrame.JpegBytes.Length <= profile.MaxJpegBytes,
+    "unavailable Codex task state must render without affecting the quota gauge");
+
 var apiKeyFrame = renderer.Render(
     aiQuotaTheme,
-    SystemSnapshot.DesignSample with { AiQuota = apiKeyQuota });
+    SystemSnapshot.DesignSample with { AiQuota = apiKeyQuota, CodexTasks = null });
 Assert(apiKeyFrame.JpegBytes is [0xFF, 0xD8, ..], "API Key AI quota theme did not render");
-Console.WriteLine("PASS AI quota model and single-platform theme for subscription/API Key data");
+var codexTasksTheme = themes.Single(theme => theme.Id == "codex-tasks");
+var tasksFrame = renderer.Render(
+    codexTasksTheme,
+    SystemSnapshot.DesignSample with { CodexTasks = quotaTaskSnapshot });
+var emptyTasksFrame = renderer.Render(
+    codexTasksTheme,
+    SystemSnapshot.DesignSample with { CodexTasks = CodexTaskSnapshot.Empty(DateTimeOffset.UtcNow) });
+var unavailableTasksFrame = renderer.Render(
+    codexTasksTheme,
+    SystemSnapshot.DesignSample with { CodexTasks = CodexTaskSnapshot.Unavailable(DateTimeOffset.UtcNow) });
+Assert(tasksFrame.JpegBytes is [0xFF, 0xD8, ..]
+       && tasksFrame.JpegBytes.Length <= profile.MaxJpegBytes
+       && emptyTasksFrame.JpegBytes is [0xFF, 0xD8, ..]
+       && unavailableTasksFrame.JpegBytes is [0xFF, 0xD8, ..]
+       && !tasksFrame.JpegBytes.SequenceEqual(emptyTasksFrame.JpegBytes),
+    "four-task Codex theme must render task, empty and unavailable states within the device limit");
+Console.WriteLine("PASS AI quota tasks and four-row Codex task theme rendering");
+
+int codexTaskPreviewIndex = Array.IndexOf(args, "--codex-task-preview");
+if (codexTaskPreviewIndex >= 0)
+{
+    Assert(codexTaskPreviewIndex + 1 < args.Length, "--codex-task-preview requires an output directory");
+    string outputDirectory = Path.GetFullPath(args[codexTaskPreviewIndex + 1]);
+    Directory.CreateDirectory(outputDirectory);
+    string quotaPath = Path.Combine(outputDirectory, "codex-quota-tasks.jpg");
+    string tasksPath = Path.Combine(outputDirectory, "codex-tasks-four-rows.jpg");
+    await File.WriteAllBytesAsync(quotaPath, subscriptionFrame.JpegBytes);
+    await File.WriteAllBytesAsync(tasksPath, tasksFrame.JpegBytes);
+    Assert(File.Exists(quotaPath) && File.Exists(tasksPath),
+        "Codex task device previews must be written completely");
+    Console.WriteLine($"PASS wrote Codex task previews to {outputDirectory}");
+}
 
 var timedLyrics = LrcLibLyricsSnapshotSource.ParseSyncedLyrics("[00:01.20] First line\n[00:03.450] 第二行\ninvalid");
 Assert(timedLyrics.Count == 2, "synchronized lyrics parser must ignore invalid lines");
@@ -715,37 +995,10 @@ using (var reverseGeocoder = new BigDataCloudReverseGeocoder(reverseGeocodeClien
     Assert(reverseGeocodeHandler.RequestCount == 1, "reverse geocoder should issue one request");
 }
 Console.WriteLine("PASS automatic-location city reverse geocoding");
-var stockResponses = new Queue<string>(new[]
-{
-    """{"chart":{"result":[{"meta":{"symbol":"AAPL","regularMarketPrice":105.0,"chartPreviousClose":100.0,"regularMarketTime":1785200000}}],"error":null}}"""
-});
-var stockHandler = new SequenceHandler(stockResponses);
-using (var stockClient = new HttpClient(stockHandler))
-using (var stockSource = new YahooStockSnapshotSource(stockClient))
-{
-    var stockSettings = new StockSettings
-    {
-        RedForGain = false,
-        Items = [new StockItemSettings { Symbol = "aapl", Alias = "苹果" }]
-    };
-    var stockSnapshot = await stockSource.ReadAsync(stockSettings);
-    Assert(stockSnapshot.Quotes.Count == 1, "stock quote was not parsed");
-    Assert(stockSnapshot.Quotes[0].Symbol == "AAPL", "stock symbol must be normalized");
-    Assert(stockSnapshot.Quotes[0].DisplayName == "苹果", "stock alias was not applied");
-    Assert(Math.Abs(stockSnapshot.Quotes[0].ChangePercent - 5.0) < 0.001, "stock change percent is incorrect");
-    Assert(!stockSnapshot.RedForGain, "stock color preference was not preserved");
-    var cachedStocks = await stockSource.ReadAsync(stockSettings);
-    Assert(ReferenceEquals(stockSnapshot, cachedStocks), "stock snapshot should use the fifteen-minute cache");
-    Assert(stockHandler.RequestCount == 1, "cached stock read must not call the API again");
-    var stockFrame = renderer.Render(themes.Single(theme => theme.Id == "stocks"), SystemSnapshot.DesignSample with { Stocks = stockSnapshot });
-    Assert(stockFrame.JpegBytes is [0xFF, 0xD8, ..], "stock data view did not render");
-}
-Console.WriteLine("PASS Yahoo chart parser, aliases, color preference and cache");
-
-var customLayoutOptions = new ScreenDisplayOptions(ImageTimePlacement.Top);
-var imageTimeFrame = renderer.Render(themes.Single(theme => theme.Id == "image"), SystemSnapshot.DesignSample, displayOptions: customLayoutOptions);
-Assert(imageTimeFrame.JpegBytes is [0xFF, 0xD8, ..], "image time placement option did not render");
-Console.WriteLine("PASS configurable image time placement render");
+var daylightOptions = new ScreenDisplayOptions(ColorMode: ScreenColorMode.Daylight);
+var daylightFrame = renderer.Render(themes.Single(theme => theme.Id == "clock-weather"), SystemSnapshot.DesignSample, displayOptions: daylightOptions);
+Assert(daylightFrame.JpegBytes is [0xFF, 0xD8, ..], "daylight clock-and-weather appearance did not render");
+Console.WriteLine("PASS configurable device-screen daylight render");
 
 var maxQualityFrame = renderer.Render(themes[0], SystemSnapshot.DesignSample, jpegQuality: 100);
 Assert(maxQualityFrame.JpegBytes.Length <= profile.MaxJpegBytes, "highest-quality JPEG exceeded device limit");
@@ -775,6 +1028,16 @@ if (aiPreviewArgumentIndex >= 0)
     Console.WriteLine($"PASS wrote AI quota preview to {previewPath}");
 }
 
+int aiAutoPreviewArgumentIndex = Array.IndexOf(args, "--ai-auto-preview");
+if (aiAutoPreviewArgumentIndex >= 0)
+{
+    Assert(aiAutoPreviewArgumentIndex + 1 < args.Length, "--ai-auto-preview requires an output path");
+    var previewPath = Path.GetFullPath(args[aiAutoPreviewArgumentIndex + 1]);
+    Directory.CreateDirectory(Path.GetDirectoryName(previewPath)!);
+    await File.WriteAllBytesAsync(previewPath, autoRenewQuotaFrame.JpegBytes);
+    Console.WriteLine($"PASS wrote automatic-renewal quota preview to {previewPath}");
+}
+
 var handler = new RecordingHandler();
 using var client = new HttpClient(handler);
 using var transport = new HttpImageDeviceTransport(client);
@@ -790,11 +1053,12 @@ var settingsPath = Path.Combine(Path.GetTempPath(), $"keyboard-screen-settings-{
 try
 {
     var settingsStore = new JsonSettingsStore(settingsPath);
-    var settings = new AppSettings { AppearanceMode = AppearanceMode.Dark, SelectedThemeId = "music", RefreshSeconds = 17, AccentColor = "#A23BFF", SelectedFontId = "file:test.ttf|test", SafeArea = new ScreenInsets(11, 53, 9, 13), AiQuota = new AiQuotaSettings { SourceKind = AiQuotaSourceKind.OpenAICodex, DisplayName = "Codex Pro" }, Weather = new WeatherSettings { LocationQuery = "上海", UseAutomaticLocation = true }, Stocks = new StockSettings { RedForGain = false, Items = [new StockItemSettings { Symbol = "0700.HK", Alias = "腾讯" }] }, Music = new MusicSettings { EnableOnlineLyrics = true, LyricOffsetSeconds = 1.5 }, ImageTimePlacement = ImageTimePlacement.Top, LaunchAtStartup = true, AutoSwitchToMusic = true, HasCompletedOnboarding = true, HasAcknowledgedStockNotice = true, HasAcknowledgedCodexNotice = true };
+    var settings = new AppSettings { AppearanceMode = AppearanceMode.Dark, ScreenColorMode = ScreenColorMode.Daylight, SelectedThemeId = "music", RefreshSeconds = 17, AccentColor = "#A23BFF", SelectedFontId = "file:test.ttf|test", SafeArea = new ScreenInsets(11, 53, 9, 13), AiQuota = new AiQuotaSettings { SourceKind = AiQuotaSourceKind.OpenAICodex, DisplayName = "Codex Pro" }, Weather = new WeatherSettings { LocationQuery = "上海", UseAutomaticLocation = true }, Music = new MusicSettings { EnableOnlineLyrics = true, LyricOffsetSeconds = 1.5 }, ImageTimePlacement = ImageTimePlacement.Top, LaunchAtStartup = true, AutoSwitchToMusic = true, HasCompletedOnboarding = true, HasAcknowledgedCodexNotice = true };
     await settingsStore.SaveAsync(settings);
     var loadedSettings = await settingsStore.LoadAsync();
     Assert(loadedSettings.SelectedThemeId == "music", "settings theme did not persist");
     Assert(loadedSettings.AppearanceMode == AppearanceMode.Dark, "appearance mode did not persist");
+    Assert(loadedSettings.ScreenColorMode == ScreenColorMode.Daylight, "screen color mode did not persist");
     Assert(loadedSettings.RefreshSeconds == 17, "settings refresh interval did not persist");
     Assert(loadedSettings.AccentColor == "#A23BFF", "settings accent color did not persist");
     Assert(loadedSettings.SelectedFontId == "file:test.ttf|test", "settings font did not persist");
@@ -804,9 +1068,8 @@ try
     Assert(loadedSettings.Weather.LocationQuery == "上海" && loadedSettings.Weather.UseAutomaticLocation, "weather location settings did not persist");
     Assert(loadedSettings.LaunchAtStartup, "launch-at-startup setting did not persist");
     Assert(loadedSettings.HasCompletedOnboarding, "onboarding completion did not persist");
-    Assert(loadedSettings.HasAcknowledgedStockNotice && loadedSettings.HasAcknowledgedCodexNotice,
-        "feature notice acknowledgements did not persist");
-    Assert(!loadedSettings.Stocks.RedForGain && loadedSettings.Stocks.Items[0].Alias == "腾讯", "stock settings did not persist");
+    Assert(loadedSettings.HasAcknowledgedCodexNotice,
+        "feature notice acknowledgement did not persist");
     Assert(loadedSettings.ImageTimePlacement == ImageTimePlacement.Top, "image time placement did not persist");
     Assert(loadedSettings.AutoSwitchToMusic, "auto switch to music setting did not persist");
     Assert(loadedSettings.Music.EnableOnlineLyrics && loadedSettings.Music.LyricOffsetSeconds == 1.5, "music settings did not persist");
@@ -829,10 +1092,20 @@ try
            && persistedMigration.RootElement.GetProperty("AiQuota").GetProperty("SourceKind").GetInt32() == (int)AiQuotaSourceKind.OpenAICodex,
         "the Codex quota migration must be saved atomically for the next startup");
 
+    await File.WriteAllTextAsync(settingsPath, """
+    { "SettingsVersion": 7, "SelectedThemeId": "stocks", "Stocks": { "RedForGain": false, "Items": [{ "Symbol": "AAPL" }] } }
+    """);
+    var stockMigration = await settingsStore.LoadAsync();
+    Assert(stockMigration.SelectedThemeId == "clock-weather",
+        "legacy stock selection must migrate to clock-and-weather");
+    using var persistedStockMigration = JsonDocument.Parse(await File.ReadAllTextAsync(settingsPath));
+    Assert(!persistedStockMigration.RootElement.TryGetProperty("Stocks", out _),
+        "legacy stock settings must be removed when migrated settings are persisted");
+
     await File.WriteAllTextAsync(settingsPath, "{ invalid json");
     var recoveredSettings = await settingsStore.LoadAsync();
     Assert(recoveredSettings.SettingsVersion == AppSettings.CurrentSettingsVersion
-           && recoveredSettings.SelectedThemeId == "clock-dot-matrix",
+           && recoveredSettings.SelectedThemeId == "clock-weather",
         "invalid settings must recover to current defaults");
     Assert(Directory.GetFiles(settingsDirectory, $"{settingsFileName}.invalid-*.json").Length == 1,
         "invalid settings file must be preserved for diagnostics");
@@ -1056,8 +1329,7 @@ sealed class StubSystemSnapshotSource : ISystemSnapshotSource
         {
             Music = null,
             AiQuota = null,
-            Weather = null,
-            Stocks = null
+            Weather = null
         });
 }
 
@@ -1094,17 +1366,6 @@ sealed class StubWeatherSnapshotSource : IWeatherSnapshotSource
     {
         ReadCount++;
         return Task.FromResult(SystemSnapshot.DesignSample.Weather!);
-    }
-}
-
-sealed class StubStockSnapshotSource : IStockSnapshotSource
-{
-    public int ReadCount { get; private set; }
-
-    public Task<StockSnapshot> ReadAsync(StockSettings settings, CancellationToken cancellationToken = default)
-    {
-        ReadCount++;
-        return Task.FromResult(StockSnapshot.Empty);
     }
 }
 

@@ -102,8 +102,8 @@ internal static class Program
         viewModel.ThemeSelected += _ => selectionCount++;
         viewModel.SetThemes(
             definitions.Select(definition => new ThemeCardViewModel(definition, preview: null)),
-            "clock");
-        Assert(viewModel.ThemeGroups.Count == 5
+            "clock-weather");
+        Assert(viewModel.ThemeGroups.Count == 4
                && viewModel.ThemeGroups.Single(group => group.Id == "music").Themes.Count == 1
                && viewModel.ThemeGroups.Sum(group => group.Themes.Count) == definitions.Count
                && !viewModel.IsAllCategorySelected
@@ -610,13 +610,13 @@ internal static class Program
         WaitForDispatcher(TimeSpan.FromMilliseconds(900));
 
         var shell = (ShellViewModel)window.DataContext;
-        shell.Screen.SelectTheme("clock", notify: true);
+        shell.Screen.SelectTheme("dashboard", notify: true);
         WaitForDispatcher(TimeSpan.FromMilliseconds(900));
 
-        Assert(shell.Screen.SelectedTheme?.Id == "clock"
+        Assert(shell.Screen.SelectedTheme?.Id == "dashboard"
                && !shell.Automation.AutoSwitchToMusic
                && !settings.AutoSwitchToMusic
-               && settings.SelectedThemeId == "clock",
+               && settings.SelectedThemeId == "dashboard",
             "manually selecting another scheme must override music auto switching instead of reverting the selection");
 
         window.Close();
@@ -656,15 +656,15 @@ internal static class Program
 
     private static void VerifyFeatureNoticeGeometry()
     {
-        var stockWindow = FeatureNoticeWindow.CreateStockNotice();
-        var card = (Border)stockWindow.FindName("NoticeCard");
+        var codexWindow = FeatureNoticeWindow.CreateCodexNotice();
+        var card = (Border)codexWindow.FindName("NoticeCard");
         var content = (Grid)card.Child;
-        var close = (Button)stockWindow.FindName("CloseButton");
-        var acknowledge = (Button)stockWindow.FindName("AcknowledgeButton");
-        var title = (TextBlock)stockWindow.FindName("TitleText");
-        var details = (ItemsControl)stockWindow.FindName("DetailsList");
+        var close = (Button)codexWindow.FindName("CloseButton");
+        var acknowledge = (Button)codexWindow.FindName("AcknowledgeButton");
+        var title = (TextBlock)codexWindow.FindName("TitleText");
+        var details = (ItemsControl)codexWindow.FindName("DetailsList");
 
-        Assert(stockWindow.SizeToContent == SizeToContent.Height,
+        Assert(codexWindow.SizeToContent == SizeToContent.Height,
             "feature notice must size itself to content");
         Assert(card.Margin.Left == card.Margin.Top && card.Margin.Top == card.Margin.Right && card.Margin.Right == card.Margin.Bottom,
             $"feature notice outer margins must be equal: {card.Margin}");
@@ -672,21 +672,15 @@ internal static class Program
             $"feature notice inner margins must be equal: {content.Margin}");
         Assert(close.Width == close.Height && close.MinWidth == close.MinHeight,
             $"feature notice close button must be square: {close.Width}x{close.Height}");
-        Assert(acknowledge.Height == 48 && title.Text.Contains("股票") && details.Items.Count == 3,
-            "stock notice must keep its acknowledgement action and three concise points");
-        stockWindow.Close();
+        Assert(acknowledge.Height == 48 && title.Text.Contains("Codex") && details.Items.Count == 3,
+            "Codex notice must keep its acknowledgement action and three concise points");
+        codexWindow.Close();
 
         var mimoWindow = FeatureNoticeWindow.CreateMiMoNotice();
         var mimoTitle = (TextBlock)mimoWindow.FindName("TitleText");
         Assert(mimoTitle.Text.Contains("MiMo"), "MiMo notice must identify the integration");
         mimoWindow.Close();
 
-        var codexWindow = FeatureNoticeWindow.CreateCodexNotice();
-        var codexTitle = (TextBlock)codexWindow.FindName("TitleText");
-        var codexDetails = (ItemsControl)codexWindow.FindName("DetailsList");
-        Assert(codexTitle.Text.Contains("Codex") && codexDetails.Items.Count == 3,
-            "Codex notice must explain the separate per-device login and portable configuration");
-        codexWindow.Close();
         Console.WriteLine("PASS one-time feature notices share first-run geometry and content structure");
     }
 

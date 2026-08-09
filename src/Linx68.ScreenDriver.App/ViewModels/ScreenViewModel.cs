@@ -70,10 +70,9 @@ public sealed partial class ScreenViewModel : ObservableObject
         ThemeGroups =
         [
             new ThemeGroupViewModel("monitor", "电脑监控", "电脑状态、性能与网络信息"),
-            new ThemeGroupViewModel("time", "时间与天气", "时间、日期、天气与图片时间"),
-            new ThemeGroupViewModel("info", "资讯与数据", "AI 用量与市场行情"),
-            new ThemeGroupViewModel("music", "音乐播放", "封面、歌词与播放进度"),
-            new ThemeGroupViewModel("matrix", "点阵风格", "适合点阵文字显示的时钟方案")
+            new ThemeGroupViewModel("time", "时间与天气", "时间、日期与天气信息"),
+            new ThemeGroupViewModel("info", "Codex 信息", "Codex 额度与任务进度"),
+            new ThemeGroupViewModel("music", "音乐播放", "封面、歌词与播放进度")
         ];
     }
 

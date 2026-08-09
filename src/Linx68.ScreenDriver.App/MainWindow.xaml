@@ -160,7 +160,6 @@
                                                     <TextBlock x:Name="CurrentThemeNameText" Text="电脑状态" FontSize="22" FontWeight="SemiBold" Margin="0,9,0,0" />
                                                     <TextBlock x:Name="CurrentThemeDescription" Text="显示 CPU、内存与网络状态" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,9,0,0" />
                                                 </StackPanel>
-                                                <Button x:Name="SelectImageButton" Grid.Column="1" Content="选择图片" Style="{StaticResource SecondaryButton}" Click="ChooseImageButton_OnClick" Visibility="Collapsed" VerticalAlignment="Center" />
                                             </Grid>
                                         </Border>
                                         <Border Style="{StaticResource SectionCard}">
@@ -215,12 +214,12 @@
                                                         <ColumnDefinition />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="Codex 额度（测试版）" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                    <TextBlock Text="Codex 额度" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
                                                     <TextBlock x:Name="AiSourceStatusText" Grid.Column="1" Text="尚未连接"
                                                                FontSize="11" Foreground="{DynamicResource SecondaryText}"
                                                                VerticalAlignment="Center" Margin="16,0,0,0" />
                                                 </Grid>
-                                                <TextBlock x:Name="AiSourceDescriptionText" Text="选择用于 AI 用量主题的数据源。"
+                                                <TextBlock x:Name="AiSourceDescriptionText" Text="选择用于 Codex 额度主题的数据源。"
                                                            FontSize="12" Foreground="{DynamicResource SecondaryText}"
                                                            Margin="0,7,0,16" TextWrapping="Wrap" />
 
@@ -347,47 +346,6 @@
                                                            FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0" />
                                             </StackPanel>
                                         </Border>
-                                        <Border x:Name="StockDataCard" Style="{StaticResource SectionCard}" Visibility="Collapsed">
-                                            <StackPanel>
-                                                <TextBlock Text="股票（测试版）" FontSize="16" FontWeight="SemiBold" />
-                                                <TextBlock Text="最多添加三项。代码示例：AAPL、0700.HK、600519.SS、000001.SZ、BTC-USD。数据可能延迟或不准确，不构成投资建议。"
-                                                           FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,14" TextWrapping="Wrap" />
-                                                <Grid Margin="0,0,0,6">
-                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                                    <TextBlock Grid.Column="1" Text="行情代码" FontSize="10" Foreground="{DynamicResource SecondaryText}" />
-                                                    <TextBlock Grid.Column="3" Text="显示别名（可选）" FontSize="10" Foreground="{DynamicResource SecondaryText}" />
-                                                </Grid>
-                                                <Grid Margin="0,0,0,8">
-                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                                    <TextBlock Text="1" FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center" />
-                                                    <TextBox x:Name="StockSymbol1TextBox" Grid.Column="1" MaxLength="24" ToolTip="行情代码" TextChanged="SettingTextBox_OnTextChanged" />
-                                                    <TextBox x:Name="StockAlias1TextBox" Grid.Column="3" MaxLength="12" ToolTip="显示别名（可选）" TextChanged="SettingTextBox_OnTextChanged" />
-                                                </Grid>
-                                                <Grid Margin="0,0,0,8">
-                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                                    <TextBlock Text="2" FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center" />
-                                                    <TextBox x:Name="StockSymbol2TextBox" Grid.Column="1" MaxLength="24" ToolTip="行情代码" TextChanged="SettingTextBox_OnTextChanged" />
-                                                    <TextBox x:Name="StockAlias2TextBox" Grid.Column="3" MaxLength="12" ToolTip="显示别名（可选）" TextChanged="SettingTextBox_OnTextChanged" />
-                                                </Grid>
-                                                <Grid Margin="0,0,0,12">
-                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                                    <TextBlock Text="3" FontSize="12" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center" />
-                                                    <TextBox x:Name="StockSymbol3TextBox" Grid.Column="1" MaxLength="24" ToolTip="行情代码" TextChanged="SettingTextBox_OnTextChanged" />
-                                                    <TextBox x:Name="StockAlias3TextBox" Grid.Column="3" MaxLength="12" ToolTip="显示别名（可选）" TextChanged="SettingTextBox_OnTextChanged" />
-                                                </Grid>
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="220" /></Grid.ColumnDefinitions>
-                                                    <StackPanel VerticalAlignment="Center">
-                                                        <TextBlock Text="涨跌颜色" FontSize="13" FontWeight="SemiBold" />
-                                                        <TextBlock x:Name="StockSourceStatusText" Text="15 分钟缓存 · 行情仅供展示" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" />
-                                                    </StackPanel>
-                                                    <ComboBox x:Name="StockColorPreferenceComboBox" Grid.Column="1" Height="44" SelectionChanged="ThemeOptionComboBox_OnSelectionChanged">
-                                                        <ComboBoxItem Content="红涨绿跌" Tag="RedGain" />
-                                                        <ComboBoxItem Content="绿涨红跌" Tag="GreenGain" />
-                                                    </ComboBox>
-                                                </Grid>
-                                            </StackPanel>
-                                        </Border>
                                     </StackPanel>
                                         </StackPanel>
                                     </Grid>
@@ -404,6 +362,19 @@
                                                     <RadioButton x:Name="SystemAppearanceRadio" GroupName="Appearance" Content="跟随系统" Style="{StaticResource SegmentRadio}" IsChecked="{Binding Appearance.IsSystemAppearance, Mode=TwoWay}" />
                                                     <RadioButton x:Name="LightAppearanceRadio" GroupName="Appearance" Content="亮色" Style="{StaticResource SegmentRadio}" IsChecked="{Binding Appearance.IsLightAppearance, Mode=TwoWay}" />
                                                     <RadioButton x:Name="DarkAppearanceRadio" GroupName="Appearance" Content="暗色" Style="{StaticResource SegmentRadio}" IsChecked="{Binding Appearance.IsDarkAppearance, Mode=TwoWay}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                        <Border Style="{StaticResource SectionCard}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock Text="设备屏外观" FontSize="16" FontWeight="SemiBold" />
+                                                    <TextBlock Text="对所有显示方案应用日间暖白或夜间深色配色。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
+                                                    <RadioButton x:Name="DaylightScreenRadio" GroupName="ScreenColorMode" Content="日间" Style="{StaticResource SegmentRadio}" IsChecked="{Binding Appearance.IsDaylightScreen, Mode=TwoWay}" />
+                                                    <RadioButton x:Name="NightScreenRadio" GroupName="ScreenColorMode" Content="夜间" Style="{StaticResource SegmentRadio}" IsChecked="{Binding Appearance.IsNightScreen, Mode=TwoWay}" />
                                                 </StackPanel>
                                             </Grid>
                                         </Border>
@@ -432,13 +403,7 @@
                                             </StackPanel>
                                         </Border>
                                         <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="16" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-
-                                            <Border Grid.Column="0" Height="{Binding ActualHeight, ElementName=FontSettingsCard}" Style="{StaticResource SectionCard}">
+                                            <Border Height="{Binding ActualHeight, ElementName=FontSettingsCard}" Style="{StaticResource SectionCard}">
                                                 <StackPanel>
                                                     <TextBlock Text="主题强调色" FontSize="16" FontWeight="SemiBold" />
                                                     <Grid Margin="0,16,0,0">
@@ -455,17 +420,6 @@
                                                     </Grid>
                                                 </StackPanel>
                                             </Border>
-
-                                            <Border Grid.Column="2" Height="{Binding ActualHeight, ElementName=FontSettingsCard}" Style="{StaticResource SectionCard}">
-                                                <StackPanel>
-                                                    <TextBlock Text="图片时间位置" FontSize="16" FontWeight="SemiBold" />
-                                                    <ComboBox x:Name="ImageTimePlacementComboBox" Margin="0,16,0,0" Height="44" ItemsSource="{Binding Appearance.ImageTimePlacements}" SelectedItem="{Binding Appearance.SelectedImageTimePlacement, Mode=TwoWay}">
-                                                        <ComboBox.ItemTemplate>
-                                                            <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
-                                                        </ComboBox.ItemTemplate>
-                                                    </ComboBox>
-                                                </StackPanel>
-                                            </Border>
                                         </Grid>                                        
                                     </StackPanel>
 
@@ -478,7 +432,7 @@
                                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                                     <StackPanel VerticalAlignment="Center">
                                                         <TextBlock Text="定时推送" FontSize="16" FontWeight="SemiBold" />
-                                                        <TextBlock Text="动态方案按设定间隔推送；图片方案仅在导入后推送一次。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,0" />
+                                                        <TextBlock Text="当前显示方案按设定间隔刷新并推送到设备。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,0" />
                                                     </StackPanel>
                                                     <CheckBox x:Name="AutoPushCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Automation.AutoPush, Mode=TwoWay}" />
                                                 </Grid>
@@ -640,7 +594,7 @@
                                                 <TextBlock Text="数据来源与使用说明" FontSize="15" FontWeight="SemiBold" />
                                                 <Grid Margin="0,15,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="天气与定位" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="天气来自 Open-Meteo（CC BY 4.0），城市名由 BigDataCloud 解析。本项目使用免费非商业接口；商业再使用请自行取得适用许可。" FontSize="11" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" /></Grid>
                                                 <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,14" />
-                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="行情与 AI 用量" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="Yahoo Finance 行情为非官方实验性集成。Codex 额度通过本机 Codex App Server 读取当前 ChatGPT 额度窗口；数据仅用于本机展示，不读取或导出登录凭据。" FontSize="11" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" /></Grid>
+                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="Codex 额度" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="Codex 额度通过本机 Codex App Server 读取当前 ChatGPT 额度窗口；数据仅用于本机展示，不读取或导出登录凭据。" FontSize="11" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" /></Grid>
                                                 <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,14" />
                                                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="116" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="品牌与视觉资产" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="本应用与 Linx68 品牌、设备制造商及上述平台不存在隶属、授权、认可或赞助关系。应用与托盘图标为 AI 辅助创作的原创视觉资产，版权归 ZCat95 所有，详见 ASSET_LICENSE.md。" FontSize="11" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" /></Grid>
                                             </StackPanel>

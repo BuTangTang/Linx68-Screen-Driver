@@ -51,7 +51,6 @@ public partial class App : System.Windows.Application
         builder.Services.AddSingleton<ILyricsSnapshotSource, NetEaseLyricsSnapshotSource>();
         builder.Services.AddSingleton<IMusicSnapshotEnricher, NetEaseMusicSnapshotEnricher>();
         builder.Services.AddSingleton<IWeatherSnapshotSource, OpenMeteoWeatherSnapshotSource>();
-        builder.Services.AddSingleton<IStockSnapshotSource, YahooStockSnapshotSource>();
         builder.Services.AddSingleton<IDeviceTransport, HttpImageDeviceTransport>();
         builder.Services.AddSingleton<IDashboardSnapshotBuilder, DashboardSnapshotBuilder>();
         builder.Services.AddSingleton<IAutomaticWeatherLocationProvider, WindowsWeatherLocationProvider>();

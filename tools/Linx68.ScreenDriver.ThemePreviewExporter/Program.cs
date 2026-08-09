@@ -10,13 +10,16 @@ using Linx68.ScreenDriver.Infrastructure;
 
 if (args.Length < 3)
 {
-    Console.Error.WriteLine("Usage: ThemePreviewExporter <output-folder> <settings.json> <fonts-folder>");
+    Console.Error.WriteLine("Usage: ThemePreviewExporter <output-folder> <settings.json> <fonts-folder> [--daylight]");
     return 2;
 }
 
 var outputRoot = Path.GetFullPath(args[0]);
 var settingsPath = Path.GetFullPath(args[1]);
 var fontsFolder = Path.GetFullPath(args[2]);
+var colorMode = args.Skip(3).Any(argument => string.Equals(argument, "--daylight", StringComparison.OrdinalIgnoreCase))
+    ? ScreenColorMode.Daylight
+    : ScreenColorMode.Night;
 var rawFolder = Path.Combine(outputRoot, "01-原始屏幕-JPEG");
 var cardsFolder = Path.Combine(outputRoot, "02-展示卡-PNG");
 Directory.CreateDirectory(rawFolder);
@@ -34,7 +37,7 @@ var renderer = new ScreenRenderer(profile);
 var imageTheme = new ImageTheme { ImagePath = settings.ImagePath };
 var themes = BuiltInThemes.Create(imageTheme);
 var accent = ParseColor(settings.AccentColor, Color.FromRgb(255, 91, 0));
-var displayOptions = new ScreenDisplayOptions(settings.ImageTimePlacement);
+var displayOptions = new ScreenDisplayOptions(settings.ImageTimePlacement, colorMode);
 byte[]? artwork = ReadOptionalImage(settings.ImagePath);
 var sample = SystemSnapshot.DesignSample with
 {
@@ -65,6 +68,7 @@ manifest.AppendLine($"生成时间：{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz
 manifest.AppendLine($"主题数量：{themes.Count}");
 manifest.AppendLine($"强调色：{settings.AccentColor}");
 manifest.AppendLine($"字体：{selectedFont.DisplayName}");
+manifest.AppendLine($"设备屏外观：{(colorMode == ScreenColorMode.Daylight ? "日间" : "夜间")}");
 manifest.AppendLine();
 
 for (var index = 0; index < themes.Count; index++)

@@ -9,7 +9,7 @@ public enum AppearanceMode
 
 public sealed class AppSettings
 {
-	public const int CurrentSettingsVersion = 7;
+	public const int CurrentSettingsVersion = 9;
 
 	public int SettingsVersion { get; set; } = CurrentSettingsVersion;
 
@@ -18,7 +18,7 @@ public sealed class AppSettings
 	public string DeviceEndpoint { get; set; } = string.Empty;
 
 
-	public string SelectedThemeId { get; set; } = "clock-dot-matrix";
+	public string SelectedThemeId { get; set; } = "clock-weather";
 
 
 	public bool AutoPush { get; set; } = true;
@@ -46,8 +46,6 @@ public sealed class AppSettings
 
 	public bool HasCompletedOnboarding { get; set; }
 
-	public bool HasAcknowledgedStockNotice { get; set; }
-
 	public bool HasAcknowledgedMiMoNotice { get; set; }
 
 	public bool HasAcknowledgedCodexNotice { get; set; }
@@ -64,11 +62,7 @@ public sealed class AppSettings
 
 	public WeatherSettings Weather { get; set; } = new();
 
-	public StockSettings Stocks { get; set; } = new();
-
-
-
-
-
 	public ImageTimePlacement ImageTimePlacement { get; set; } = ImageTimePlacement.Bottom;
+
+	public ScreenColorMode ScreenColorMode { get; set; } = ScreenColorMode.Night;
 }

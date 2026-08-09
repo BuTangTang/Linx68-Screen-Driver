@@ -60,6 +60,11 @@ public partial class MainWindow
 				ApplyAppearance();
 				ScheduleAutoCommit();
 				break;
+			case nameof(AppearanceViewModel.ScreenColorMode):
+				_settings.ScreenColorMode = _appearanceViewModel.ScreenColorMode;
+				_themeGalleryPreviewDirty = true;
+				ScheduleAutoCommit();
+				break;
 			case nameof(AppearanceViewModel.AccentColor):
 				if (_appearanceViewModel.IsAccentColorValid)
 				{

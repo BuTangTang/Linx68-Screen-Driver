@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="568" height="1712" viewBox="0 0 142 428" role="img" aria-labelledby="title desc">
+  <title id="title">灵犀68小屏 Codex 额度与当前任务卡设计稿</title>
+  <desc id="desc">142乘428深色小屏，显示额度圆环、具体重置时间和两条紧凑的Codex任务。</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#15112B"/><stop offset="1" stop-color="#091624"/></linearGradient>
+    <linearGradient id="reset" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#292447"/><stop offset="1" stop-color="#18223A"/></linearGradient>
+    <style>
+      .label { font: 600 3.3px 'Segoe UI', 'Microsoft YaHei UI', sans-serif; fill:#A9B6CD }
+      .muted { font: 500 3px 'Segoe UI', 'Microsoft YaHei UI', sans-serif; fill:#8191A8 }
+      .body { font: 600 4px 'Segoe UI', 'Microsoft YaHei UI', sans-serif; fill:#E8F0FC }
+      .bold { font: 700 5px 'Segoe UI', 'Microsoft YaHei UI', sans-serif; fill:#FFFFFF }
+      .percent { font: 700 16px 'Segoe UI', 'Microsoft YaHei UI', sans-serif; fill:#FFFFFF }
+    </style>
+  </defs>
+  <rect width="142" height="428" fill="url(#background)"/>
+  <g transform="translate(0 52)">
+  <circle cx="14" cy="11" r="1.6" fill="#69DFC7"/>
+  <text x="18" y="12" class="body">Codex 额度</text>
+  <text x="122" y="12" text-anchor="end" class="label" fill="#69DFC7">订阅</text>
+  <circle cx="71" cy="98" r="46" fill="none" stroke="#384362" stroke-width="10"/>
+  <path d="M71 52 A46 46 0 1 1 27.3 82.4" fill="none" stroke="#6C8CFF" stroke-width="10" stroke-linecap="butt"/>
+  <text x="71" y="103" text-anchor="middle" class="percent">56%</text>
+  <text x="71" y="112" text-anchor="middle" class="label">可用额度</text>
+  <rect x="10" y="166" width="122" height="54" rx="13" fill="url(#reset)" stroke="#505A8B"/>
+  <text x="20" y="181" class="label">下一次重置</text>
+  <text x="20" y="204" class="bold" font-size="8">08月09日 18:42</text>
+  <rect x="10" y="232" width="122" height="55" rx="11" fill="#152A2B" stroke="#4CCAB5"/>
+  <circle cx="21" cy="245" r="3" fill="#69DFC7"/>
+  <text x="28" y="247" class="label" fill="#78EBD7">运行中</text>
+  <text x="122" y="247" text-anchor="end" class="label" fill="#A7F3E5">2/4</text>
+  <text x="20" y="272" class="body">灵犀68：Codex 任务进度卡设计</text>
+  <rect x="10" y="294" width="122" height="55" rx="11" fill="#171E2B" stroke="#60ABF5"/>
+  <circle cx="21" cy="307" r="3" fill="#60ABF5"/>
+  <text x="28" y="309" class="label" fill="#60ABF5">完成了</text>
+  <text x="122" y="309" text-anchor="end" class="label">12:18</text>
+  <text x="20" y="334" class="body">修复歌词刷新与视觉验收</text>
+  </g>
+</svg>

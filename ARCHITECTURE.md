@@ -16,7 +16,7 @@ Linx68.ScreenDriver.Infrastructure  Windows、HTTP、文件系统和 JSON 的端
 
 - `Core` 不引用其他项目；它定义 `ThemeDefinition`、`IScreenTheme`、`SystemSnapshot`、`AppSettings` 和 `ScreenRenderer`。
 - `Application` 只引用 `Core`；它定义数据源、设置和传输端口，并编排 `DashboardRefreshService`、`DashboardSnapshotBuilder` 与 `DisplayPushService`。
-- `Infrastructure` 实现 Application 端口，例如 Windows 媒体会话、Open-Meteo、Yahoo Finance、HTTP 图像上传和原子 JSON 设置保存。
+- `Infrastructure` 实现 Application 端口，例如 Windows 媒体会话、Open-Meteo、HTTP 图像上传和原子 JSON 设置保存。
 - `App` 是唯一的 WPF 宿主。`App.xaml.cs` 使用 Generic Host 注册依赖；`MainWindow` 保留 WPF 专属行为，不直接决定数据采集和设备地址规则。
 
 ## 运行时组合
@@ -30,12 +30,11 @@ Linx68.ScreenDriver.Infrastructure  Windows、HTTP、文件系统和 JSON 的端
 | `ISystemSnapshotSource` | `WindowsSystemSnapshotSource` | CPU、内存、网络 |
 | `ILyricsSnapshotSource` | `LrcLibLyricsSnapshotSource` | 可选同步歌词和缓存 |
 | `IWeatherSnapshotSource` | `OpenMeteoWeatherSnapshotSource` | 城市/坐标天气 |
-| `IStockSnapshotSource` | `YahooStockSnapshotSource` | 可选行情和缓存 |
 | `IAutomaticWeatherLocationProvider` | `WindowsWeatherLocationProvider` | Windows 定位与城市反查 |
 | `IDashboardRefreshService` | `DashboardRefreshService` | 主题决策和按需快照刷新 |
 | `IDisplayPushService` | `DisplayPushService` | IPv4 地址归一化和设备推送 |
 
-Codex 额度读取位于 Infrastructure：它通过本机 Codex App Server 取得已登录 ChatGPT 账号的额度窗口，而不读取认证令牌。MiMo 用量登录窗口仍属于 App：它需要用户交互和 WebView2 已登录会话。刷新服务只在 AI 主题需要数据时通过回调请求相应数据源，避免让登录实现渗入 Core 或 Infrastructure。
+Codex 额度与任务读取位于 Infrastructure：额度通过本机 Codex App Server 取得已登录 ChatGPT 账号的额度窗口；任务列表通过只读 App Server 请求取得，并以匹配 rollout 文件的写入时间和开始/完成事件类型补足跨进程活动状态。该路径不读取认证令牌，也不提取任务对话正文、代码或命令输出。MiMo 用量登录窗口仍属于 App：它需要用户交互和 WebView2 已登录会话。刷新服务只在相应主题需要数据时通过回调请求数据源，避免让登录实现渗入 Core 或 Infrastructure。
 
 ## 刷新与推送流程
 
@@ -49,7 +48,7 @@ MainWindow.RefreshPreviewAsync
 DashboardRefreshService
   ├─ 读取 Windows 媒体会话
   ├─ 根据 ThemeDefinition 与媒体状态决定有效主题
-  ├─ 仅在元数据声明需要时读取 AI、天气、歌词、股票
+  ├─ 仅在元数据声明需要时读取 AI、天气和歌词
   └─ DashboardSnapshotBuilder 合成 SystemSnapshot
              │
              ▼

@@ -9,7 +9,7 @@ public sealed record SystemSnapshot(
     MusicSnapshot? Music = null,
     AiQuotaSnapshot? AiQuota = null,
     WeatherSnapshot? Weather = null,
-    StockSnapshot? Stocks = null)
+    CodexTaskSnapshot? CodexTasks = null)
 {
     public static SystemSnapshot DesignSample { get; } = new(
         DateTimeOffset.Now,
@@ -30,5 +30,12 @@ public sealed record SystemSnapshot(
             56,
             remainingCount: 1,
             resetPeriod: AiResetPeriod.Weekly),
-        new WeatherSnapshot(true, "北京", 26, 28, 61, 2, true, DateTimeOffset.Now));
+        new WeatherSnapshot(true, "北京", 26, 28, 61, 2, true, DateTimeOffset.Now),
+        new CodexTaskSnapshot(
+            true,
+            [
+                new CodexTaskItem("优化小屏歌词连续展示", CodexTaskStatus.Active, DateTimeOffset.Now, 2, 4),
+                new CodexTaskItem("校验 Codex 额度主题", CodexTaskStatus.Recent, DateTimeOffset.Now.AddMinutes(-12))
+            ],
+            DateTimeOffset.Now));
 }

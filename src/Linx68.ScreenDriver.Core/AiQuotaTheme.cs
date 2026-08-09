@@ -5,10 +5,12 @@ namespace Linx68.ScreenDriver.Core;
 
 public sealed class AiQuotaTheme : IScreenTheme
 {
+    private static readonly Color QuotaColor = Color.FromRgb(108, 140, 255);
+
     public string Id => "ai-quota";
-    public string DisplayName => "AI 用量（测试版）";
-    public string Description => "单平台剩余额度能量条";
-    public string Details => "从下向上显示 AI 剩余额度，支持 API Key 与订阅制数据。";
+    public string DisplayName => "Codex 额度";
+    public string Description => "额度圆环、重置与任务状态";
+    public string Details => "显示当前平台可用额度与具体重置时间；Codex 模式额外显示运行中或已经完成的任务。";
 
     public void Draw(ScreenCanvas canvas, SystemSnapshot snapshot)
     {
@@ -19,142 +21,132 @@ public sealed class AiQuotaTheme : IScreenTheme
             ? quota.PlatformName.Trim()
             : "AI";
 
-        canvas.Fill(Color.FromRgb(6, 9, 13));
+        canvas.Gradient(Color.FromRgb(19, 17, 38), Color.FromRgb(10, 18, 30), new Point(0, 0), new Point(1, 1));
 
-        canvas.Text(
+        canvas.Ellipse(new Rect(safe.Left, safe.Top + 8, 6, 6), quota.Available ? QuotaColor : Color.FromRgb(108, 121, 136));
+        canvas.FittedText(
             $"{platformName} 额度",
-            8.5,
-            Color.FromRgb(108, 121, 136),
-            new Point(safe.Left, safe.Top + 7),
-            FontWeights.SemiBold);
-
-        var resetText = FormatReset(quota);
-        if (!string.IsNullOrEmpty(resetText))
-        {
-            canvas.Text(
-                resetText,
-                7.5,
-                Color.FromRgb(108, 121, 136),
-                new Point(safe.Left, safe.Top + 8),
-                FontWeights.Medium,
-                TextAlignment.Right,
-                safe.Width);
-        }
-
-        const double meterWidth = 48;
-        const double meterHeight = 208;
-        var meter = new Rect(
-            safe.Left + (safe.Width - meterWidth) / 2,
-            safe.Top + 38,
-            meterWidth,
-            meterHeight);
-
-        canvas.RoundedRect(
-            meter,
-            meterWidth / 2,
-            Color.FromRgb(18, 24, 31),
-            Color.FromRgb(42, 51, 62),
-            1);
-
-        var inner = new Rect(meter.X + 6, meter.Y + 6, meter.Width - 12, meter.Height - 12);
-        var fillHeight = inner.Height * percent / 100d;
-        if (fillHeight > 0)
-        {
-            var fill = new Rect(
-                inner.X,
-                inner.Bottom - fillHeight,
-                inner.Width,
-                fillHeight);
-            var fillRadius = Math.Min(inner.Width / 2, fill.Height / 2);
-            canvas.RoundedRect(fill, fillRadius, canvas.AccentColor);
-
-            if (fill.Height >= 10)
-            {
-                canvas.Ellipse(
-                    new Rect(fill.X + 8, fill.Y + 4, fill.Width - 16, 3),
-                    Mix(canvas.AccentColor, Colors.White, 0.48));
-            }
-        }
-
-        canvas.Text(
-            platformName,
-            15,
+            12.5,
+            10.5,
             Colors.White,
-            new Point(safe.Left, meter.Bottom + 24),
+            new Point(safe.Left + 11, safe.Top + 4),
             FontWeights.SemiBold,
-            TextAlignment.Center,
-            safe.Width,
+            TextAlignment.Left,
+            safe.Width - 44,
             24);
 
-        canvas.Text(
-            quota.Available ? quota.RemainingDisplay : "--",
-            quota.RemainingCount.HasValue ? 22 : 26,
-            quota.Available ? canvas.AccentColor : Color.FromRgb(91, 103, 117),
-            new Point(safe.Left, meter.Bottom + 51),
-            FontWeights.Bold,
-            TextAlignment.Center,
-            safe.Width,
-            38);
+        Point center = new Point(safe.Left + safe.Width / 2, safe.Top + 84);
+        const double radius = 46;
+        canvas.Ellipse(new Rect(center.X - radius, center.Y - radius, radius * 2, radius * 2), Color.FromArgb(0, 0, 0, 0), Color.FromRgb(55, 62, 92), 10);
+        DrawArc(canvas, center, radius, percent, quota.Available ? QuotaColor : Color.FromRgb(82, 93, 110));
+        canvas.Text(quota.Available ? $"{Math.Round(percent):0}%" : "--", 28, Colors.White,
+            new Point(center.X - radius, center.Y - 17), FontWeights.Bold, TextAlignment.Center, radius * 2, 38);
+        canvas.Text(quota.Available ? "可用额度" : "等待额度数据", 11, Color.FromRgb(173, 186, 204),
+            new Point(center.X - radius, center.Y + 16), FontWeights.Medium, TextAlignment.Center, radius * 2, 18);
 
-        canvas.Text(
-            quota.Available ? FormatMetric(quota) : "等待额度数据",
-            7.5,
-            Color.FromRgb(91, 103, 117),
-            new Point(safe.Left, safe.Bottom - 13),
-            FontWeights.Medium,
-            TextAlignment.Center,
-            safe.Width,
-            12);
-    }
+        Rect resetCard = new Rect(safe.Left, safe.Top + 142, safe.Width, 54);
+        canvas.RoundedGradientRect(resetCard, 13, Color.FromRgb(38, 35, 66), Color.FromRgb(24, 30, 53), Color.FromRgb(72, 76, 119));
+        canvas.Text("下一次重置", 10.5, Color.FromRgb(161, 174, 203), new Point(resetCard.Left + 10, resetCard.Top + 6), FontWeights.SemiBold);
+        string resetText = FormatReset(quota);
+        canvas.FittedText(string.IsNullOrEmpty(resetText) ? "暂未提供重置时间" : resetText, 16, 12, Colors.White,
+            new Point(resetCard.Left + 10, resetCard.Top + 24), FontWeights.SemiBold, TextAlignment.Left, resetCard.Width - 20, 21);
 
-    private static string FormatMetric(AiQuotaSnapshot quota)
-    {
-        if (quota.AccessType == AiAccessType.Subscription)
+        if (snapshot.CodexTasks is not null)
         {
-            return quota.ResetPeriod == AiResetPeriod.None
-                ? "订阅额度"
-                : $"订阅 · {ResetLabel(quota.ResetPeriod)}";
+            DrawCodexTasks(canvas, safe, snapshot.CodexTasks);
+            return;
         }
 
-        return quota.Balance?.Metric switch
+        DrawRemainingCard(canvas, safe, quota);
+    }
+
+    private static void DrawArc(ScreenCanvas canvas, Point center, double radius, double percent, Color color)
+    {
+        double clampedPercent = Math.Clamp(percent, 0d, 100d);
+        if (clampedPercent <= 0)
         {
-            AiQuotaMetric.Token => "密钥 · 令牌",
-            AiQuotaMetric.Cost => "密钥 · 费用",
-            AiQuotaMetric.Credit => "密钥 · 额度",
-            AiQuotaMetric.Request => "密钥 · 请求",
-            _ => "密钥 · 额度"
-        };
+            return;
+        }
+
+        if (clampedPercent >= 100)
+        {
+            canvas.Ellipse(new Rect(center.X - radius, center.Y - radius, radius * 2, radius * 2), Color.FromArgb(0, 0, 0, 0), color, 10);
+            return;
+        }
+
+        double sweepDegrees = Math.Max(3d, 360d * clampedPercent / 100d);
+        Point start = PointOnCircle(center, radius, -90);
+        Point end = PointOnCircle(center, radius, -90 + sweepDegrees);
+        var geometry = new StreamGeometry();
+        using (StreamGeometryContext context = geometry.Open())
+        {
+            context.BeginFigure(start, false, false);
+            context.ArcTo(end, new Size(radius, radius), 0, sweepDegrees > 180, SweepDirection.Clockwise, true, false);
+        }
+        geometry.Freeze();
+        canvas.Path(geometry, color, 10);
+    }
+
+    private static Point PointOnCircle(Point center, double radius, double degrees)
+    {
+        double radians = degrees * Math.PI / 180d;
+        return new Point(center.X + radius * Math.Cos(radians), center.Y + radius * Math.Sin(radians));
+    }
+
+    private static void DrawCodexTasks(ScreenCanvas canvas, Rect safe, CodexTaskSnapshot tasks)
+    {
+        IReadOnlyList<CodexTaskItem> displayTasks = tasks.GetDisplayTasks(2);
+        const double cardHeight = 68;
+        const double cardGap = 8;
+        double firstCardTop = safe.Bottom - (cardHeight * 2 + cardGap);
+        for (int index = 0; index < 2; index++)
+        {
+            CodexTaskItem? task = CodexTaskCardRenderer.GetTask(displayTasks, index);
+            if (!tasks.Available)
+            {
+                task = new CodexTaskItem("任务状态暂不可用", CodexTaskStatus.Unavailable, DateTimeOffset.MinValue);
+            }
+
+            var card = new Rect(safe.Left, firstCardTop + index * (cardHeight + cardGap), safe.Width, cardHeight);
+            CodexTaskCardRenderer.Draw(canvas, card, task);
+        }
+    }
+
+    private static void DrawRemainingCard(ScreenCanvas canvas, Rect safe, AiQuotaSnapshot quota)
+    {
+        Rect summaryCard = new Rect(safe.Left, safe.Top + 232, safe.Width, 70);
+        canvas.RoundedRect(summaryCard, 13, Color.FromRgb(20, 28, 45), Color.FromRgb(52, 64, 91));
+        canvas.CenteredText("剩余", 8, Color.FromRgb(151, 165, 187),
+            new Rect(summaryCard.Left, summaryCard.Top + 10, summaryCard.Width, 14), FontWeights.SemiBold);
+        canvas.CenteredText(FormatCount(quota), 20, quota.Available ? Colors.White : Color.FromRgb(125, 138, 156),
+            new Rect(summaryCard.Left, summaryCard.Top + 28, summaryCard.Width, 27), FontWeights.Bold);
+    }
+
+    private static string FormatCount(AiQuotaSnapshot quota)
+    {
+        if (!quota.Available)
+        {
+            return "--";
+        }
+
+        if (quota.RemainingCount is { } remainingCount)
+        {
+            return $"{remainingCount} 次";
+        }
+
+        return quota.RemainingDisplay;
     }
 
     private static string FormatReset(AiQuotaSnapshot quota)
     {
-        if (!quota.Available || quota.ResetPeriod == AiResetPeriod.None)
+        if (!quota.Available)
         {
             return string.Empty;
         }
 
         return quota.ResetsAt is { } resetsAt
             ? resetsAt.ToLocalTime().ToString("MM月dd日 HH:mm")
-            : ResetLabel(quota.ResetPeriod);
+            : string.Empty;
     }
 
-    private static string ResetLabel(AiResetPeriod period) => period switch
-    {
-        AiResetPeriod.Hourly => "每小时",
-        AiResetPeriod.Daily => "每日",
-        AiResetPeriod.Weekly => "每周",
-        AiResetPeriod.Monthly => "每月",
-        AiResetPeriod.BillingCycle => "账期",
-        AiResetPeriod.Custom => "自定义",
-        _ => string.Empty
-    };
-
-    private static Color Mix(Color source, Color target, double amount)
-    {
-        amount = Math.Clamp(amount, 0d, 1d);
-        return Color.FromRgb(
-            (byte)Math.Round(source.R + (target.R - source.R) * amount),
-            (byte)Math.Round(source.G + (target.G - source.G) * amount),
-            (byte)Math.Round(source.B + (target.B - source.B) * amount));
-    }
 }

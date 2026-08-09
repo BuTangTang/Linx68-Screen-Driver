@@ -41,6 +41,11 @@ public sealed class DashboardRefreshService(
                 ? await request.ReadAiQuotaAsync(cancellationToken)
                 : null;
 
+        CodexTaskSnapshot? codexTasks = effectiveTheme.Requires(ThemeDataRequirements.CodexTasks)
+            && request.ReadCodexTasksAsync is not null
+                ? await request.ReadCodexTasksAsync(cancellationToken)
+                : null;
+
         WeatherSettingsResolution? weatherResolution = null;
         if (effectiveTheme.Requires(ThemeDataRequirements.Weather))
         {
@@ -55,6 +60,7 @@ public sealed class DashboardRefreshService(
             sourceMusic,
             weatherResolution?.Settings,
             aiQuota,
+            codexTasks,
             cancellationToken);
 
         return new DashboardRefreshResult(
