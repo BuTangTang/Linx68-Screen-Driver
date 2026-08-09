@@ -12,6 +12,22 @@
         TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <DataTemplate x:Key="DataSourceStatusCardTemplate">
+            <Border Style="{StaticResource SectionCard}" Padding="16" Margin="0,0,10,0" MinHeight="112">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" />
+                        <Border Grid.Column="1" Background="{DynamicResource AccentSoftBrush}" CornerRadius="10" Padding="8,3">
+                            <TextBlock Text="{Binding StateLabel}" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+                        </Border>
+                    </Grid>
+                    <TextBlock Grid.Row="1" Text="{Binding Summary}" FontSize="12" FontWeight="SemiBold" Margin="0,10,0,0" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Row="2" Text="{Binding Source}" FontSize="10" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" />
+                </Grid>
+            </Border>
+        </DataTemplate>
     </Window.Resources>
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="56" ResizeBorderThickness="7" CornerRadius="0" GlassFrameThickness="-1" />
@@ -61,7 +77,7 @@
             </Grid>
 
             <Grid x:Name="WorkspaceLayout" Grid.Row="1" Margin="18,0,18,18">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="196" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+				<Grid.ColumnDefinitions><ColumnDefinition Width="210" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0" Margin="0,10,0,0" Background="{DynamicResource Surface.Sidebar}" CornerRadius="{StaticResource Radius.Window}" BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1" ClipToBounds="True">
                     <Grid x:Name="SidebarShell">
@@ -76,6 +92,7 @@
 
                         <StackPanel x:Name="SidebarNavigationPanel" Grid.Row="1" Margin="8,22,8,0">
                             <RadioButton x:Name="ScreenNav" GroupName="Navigation" Content="显示方案" Style="{StaticResource SideNavRadio}" Tag="screen" Checked="Navigation_OnChecked" IsChecked="{Binding IsScreenPage, Mode=OneWay}" />
+                            <RadioButton x:Name="DataServicesNav" GroupName="Navigation" Content="数据服务" Style="{StaticResource SideNavRadio}" Tag="dataServices" Checked="Navigation_OnChecked" IsChecked="{Binding IsDataServicesPage, Mode=OneWay}" />
                             <RadioButton x:Name="AutomationNav" GroupName="Navigation" Content="自动化" Style="{StaticResource SideNavRadio}" Tag="automation" Checked="Navigation_OnChecked" IsChecked="{Binding IsAutomationPage, Mode=OneWay}" />
                             <RadioButton x:Name="ThemeNav" GroupName="Navigation" Content="外观" Style="{StaticResource SideNavRadio}" Tag="appearance" Checked="Navigation_OnChecked" IsChecked="{Binding IsAppearancePage, Mode=OneWay}" />
                             <RadioButton x:Name="SettingsNav" GroupName="Navigation" Content="其他设置" Style="{StaticResource SideNavRadio}" Tag="settings" Checked="Navigation_OnChecked" IsChecked="{Binding IsSettingsPage, Mode=OneWay}" />
@@ -104,31 +121,37 @@
                                 <TextBlock x:Name="PageTitleText" Text="{Binding PageTitle}" FontSize="22" FontWeight="SemiBold" />
                                 <TextBlock x:Name="PageSubtitleText" Text="{Binding PageSubtitle}" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" />
                             </StackPanel>
-                            <Button x:Name="LocateCurrentButton" Grid.Column="1" Content="定位当前" Style="{StaticResource CompactSecondaryButton}" VerticalAlignment="Center" Click="LocateCurrent_OnClick" Visibility="{Binding IsScreenPage, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock x:Name="HeaderRefreshTimingText" Text="" FontSize="11" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                <Button x:Name="RefreshAllDataButton" Content="刷新全部" Style="{StaticResource CompactSecondaryButton}" Click="RefreshAllDataButton_OnClick" Visibility="{Binding IsDataServicesPage, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <Button x:Name="RunAutomationNowButton" Content="立即执行" Style="{StaticResource CompactSecondaryButton}" Click="RunAutomationNowButton_OnClick" Visibility="{Binding IsAutomationPage, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                <Button x:Name="RefreshScreenDataButton" Content="刷新数据" Style="{StaticResource CompactSecondaryButton}" Click="RefreshScreenDataButton_OnClick" Visibility="{Binding IsScreenPage, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,0,8,0" />
+                                <Button x:Name="LocateCurrentButton" Content="定位当前" Style="{StaticResource CompactSecondaryButton}" Click="LocateCurrent_OnClick" Visibility="{Binding IsScreenPage, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            </StackPanel>
                         </Grid>
 
                         <Grid x:Name="ContentLayout" Grid.Row="1">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="20" /><ColumnDefinition Width="288" /></Grid.ColumnDefinitions>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <ScrollViewer x:Name="ThemeScrollViewer" Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" FocusVisualStyle="{x:Null}" KeyboardNavigation.IsTabStop="False" SizeChanged="ThemeScrollViewer_OnSizeChanged">
                                 <Grid>
                                     <Grid x:Name="ScreenPanel" Width="{Binding ViewportWidth, ElementName=ThemeScrollViewer}" Visibility="{Binding IsScreenPage, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="142" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                        <StackPanel x:Name="ThemeCategoryNavigation" VerticalAlignment="Top">
-                                            <TextBlock Text="方案分类" FontSize="12" FontWeight="SemiBold" Margin="8,4,8,12" />
+										<Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                        <StackPanel x:Name="ThemeCategoryNavigation" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,0,0,14">
 											<RadioButton Tag="all" GroupName="ThemeCategory" Style="{StaticResource ThemeCategoryRadio}" Command="{Binding Screen.SelectCategoryCommand}" CommandParameter="all" IsChecked="{Binding Screen.IsAllCategorySelected, Mode=OneWay}">
-                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="全部方案" /><TextBlock Grid.Column="1" Text="{Binding Screen.AllThemeCount}" Foreground="{DynamicResource SecondaryText}" /></Grid>
+                                                <StackPanel Orientation="Horizontal"><TextBlock Text="全部" /><TextBlock Text="{Binding Screen.AllThemeCount, StringFormat={}  {0}}" Foreground="{DynamicResource SecondaryText}" /></StackPanel>
                                             </RadioButton>
                                             <ItemsControl x:Name="ThemeCategoryPanel" ItemsSource="{Binding Screen.ThemeGroups}">
+                                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
-														<RadioButton Tag="{Binding Id}" GroupName="ThemeCategory" Style="{StaticResource ThemeCategoryRadio}" Command="{Binding DataContext.Screen.SelectCategoryCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Id}" IsChecked="{Binding IsSelected, Mode=OneWay}">
-                                                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="1" Text="{Binding Themes.Count}" Foreground="{DynamicResource SecondaryText}" /></Grid>
+													<RadioButton Tag="{Binding Id}" GroupName="ThemeCategory" Style="{StaticResource ThemeCategoryRadio}" Command="{Binding DataContext.Screen.SelectCategoryCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Id}" IsChecked="{Binding IsSelected, Mode=OneWay}">
+                                                            <StackPanel Orientation="Horizontal"><TextBlock Text="{Binding DisplayName}" /><TextBlock Text="{Binding Themes.Count, StringFormat={}  {0}}" Foreground="{DynamicResource SecondaryText}" /></StackPanel>
                                                         </RadioButton>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
                                         </StackPanel>
-                                        <Grid Grid.Column="2" x:Name="ThemeLibraryPanel">
+                                        <Grid Grid.Row="1" x:Name="ThemeLibraryPanel">
                                             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                                             <TextBlock Text="{Binding Screen.VisibleThemeCountText}" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,12" />
                                             <ItemsControl x:Name="ThemeGalleryPanel" Grid.Row="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" ItemsSource="{Binding Screen.VisibleThemes}">
@@ -151,7 +174,7 @@
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
                                         </Grid>
-                                        <StackPanel x:Name="CurrentConfigPanel" Visibility="Collapsed">
+                                        <StackPanel x:Name="CurrentConfigPanel" Grid.Row="2" Visibility="Collapsed">
                                         <Border Style="{StaticResource SectionCard}">
                                             <Grid>
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -219,44 +242,9 @@
                                                                FontSize="11" Foreground="{DynamicResource SecondaryText}"
                                                                VerticalAlignment="Center" Margin="16,0,0,0" />
                                                 </Grid>
-                                                <TextBlock x:Name="AiSourceDescriptionText" Text="选择用于 Codex 额度主题的数据源。"
+                                                <TextBlock Text="通过本机 Codex App Server 读取额度窗口与下次重置时间。身份认证仍由 Codex 管理，本应用不会读取、复制或导出 auth.json。"
                                                            FontSize="12" Foreground="{DynamicResource SecondaryText}"
                                                            Margin="0,7,0,16" TextWrapping="Wrap" />
-
-                                                <Border Style="{StaticResource InlineSurface}" Padding="16,12" Margin="0,0,0,12">
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition />
-                                                            <ColumnDefinition Width="320" />
-                                                        </Grid.ColumnDefinitions>
-                                                        <StackPanel VerticalAlignment="Center">
-                                                            <TextBlock Text="数据源" FontSize="13" FontWeight="SemiBold" />
-                                                            <TextBlock Text="不同平台的登录资料不会互相迁移" FontSize="11"
-                                                                       Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" />
-                                                        </StackPanel>
-                                                        <ComboBox x:Name="AiSourceComboBox" Grid.Column="1" SelectedValuePath="Tag"
-                                                                  SelectionChanged="AiSourceComboBox_OnSelectionChanged">
-                                                            <ComboBoxItem Tag="MiMo" Content="小米 MiMo 额度" />
-                                                            <ComboBoxItem Tag="Codex" Content="OpenAI Codex 额度" />
-                                                        </ComboBox>
-                                                    </Grid>
-                                                </Border>
-
-                                                <Border Style="{StaticResource InlineSurface}" Padding="16,12" Margin="0,0,0,12">
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition />
-                                                            <ColumnDefinition Width="320" />
-                                                        </Grid.ColumnDefinitions>
-                                                        <StackPanel VerticalAlignment="Center">
-                                                            <TextBlock Text="屏幕显示名称" FontSize="13" FontWeight="SemiBold" />
-                                                            <TextBlock Text="建议不超过 12 个字符" FontSize="11"
-                                                                       Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" />
-                                                        </StackPanel>
-                                                        <TextBox x:Name="AiDisplayNameTextBox" Grid.Column="1" Text="Codex" MaxLength="18"
-                                                                 VerticalAlignment="Center" TextChanged="SettingTextBox_OnTextChanged" />
-                                                    </Grid>
-                                                </Border>
 
                                                 <Border Style="{StaticResource InlineSurface}" Padding="16">
                                                     <StackPanel>
@@ -270,23 +258,23 @@
                                                             </Grid.ColumnDefinitions>
                                                             <StackPanel VerticalAlignment="Center">
                                                                 <TextBlock Text="当前窗口剩余" FontSize="11" Foreground="{DynamicResource SecondaryText}" />
-                                                                <TextBlock x:Name="MiMoRemainingValueText" Text="—" FontSize="24"
+                                                                <TextBlock x:Name="CodexRemainingValueText" Text="—" FontSize="24"
                                                                            FontWeight="SemiBold" Margin="0,4,0,0" />
                                                             </StackPanel>
                                                             <Border Grid.Column="1" Width="1" Background="{DynamicResource Stroke.Default}" Margin="18,2" />
                                                             <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                                                 <TextBlock Text="当前窗口已用" FontSize="11" Foreground="{DynamicResource SecondaryText}" />
-                                                                <TextBlock x:Name="MiMoCreditsValueText" Text="—" FontSize="15"
+                                                                <TextBlock x:Name="CodexCreditsValueText" Text="—" FontSize="15"
                                                                            FontWeight="SemiBold" Margin="0,6,0,0" />
                                                             </StackPanel>
                                                             <Border Grid.Column="3" Width="1" Background="{DynamicResource Stroke.Default}" Margin="18,2" />
                                                             <StackPanel Grid.Column="4" VerticalAlignment="Center">
                                                                 <TextBlock Text="下次重置" FontSize="11" Foreground="{DynamicResource SecondaryText}" />
-                                                                <TextBlock x:Name="MiMoExpiryValueText" Text="—" FontSize="15"
+                                                                <TextBlock x:Name="CodexExpiryValueText" Text="—" FontSize="15"
                                                                            FontWeight="SemiBold" Margin="0,6,0,0" />
                                                             </StackPanel>
                                                         </Grid>
-                                                        <ProgressBar x:Name="MiMoRemainingProgress" Height="4" Minimum="0" Maximum="100"
+                                                        <ProgressBar x:Name="CodexRemainingProgress" Height="4" Minimum="0" Maximum="100"
                                                                      Value="0" Margin="0,14,0,0" Foreground="{DynamicResource AccentBrush}"
                                                                      Background="{DynamicResource Surface.Pressed}" BorderThickness="0">
                                                             <ProgressBar.Template>
@@ -303,12 +291,7 @@
                                                     </StackPanel>
                                                 </Border>
 
-                                                <StackPanel x:Name="MiMoActionsPanel" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                                                    <Button Content="登录小米控制台" MinWidth="138" Click="MiMoLoginButton_OnClick" />
-                                                    <Button Content="立即刷新" Style="{StaticResource SecondaryButton}"
-                                                            MinWidth="104" Margin="8,0,0,0" Click="MiMoRefreshButton_OnClick" />
-                                                </StackPanel>
-                                                <WrapPanel x:Name="CodexActionsPanel" HorizontalAlignment="Right" Margin="0,12,0,0" Visibility="Collapsed">
+                                                <WrapPanel x:Name="CodexActionsPanel" HorizontalAlignment="Right" Margin="0,12,0,0">
                                                     <Button Content="安装/更新 Codex" MinWidth="126" Click="CodexInstallButton_OnClick" />
                                                     <Button Content="登录 Codex" MinWidth="104" Margin="8,0,0,8" Click="CodexLoginButton_OnClick" />
                                                     <Button Content="刷新额度" Style="{StaticResource SecondaryButton}" MinWidth="92" Margin="8,0,0,8" Click="CodexStatusButton_OnClick" />
@@ -350,7 +333,103 @@
                                         </StackPanel>
                                     </Grid>
 
+                                    <StackPanel x:Name="DataServicesPanel" Visibility="{Binding IsDataServicesPage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Grid Margin="0,0,-10,4">
+                                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                            <ContentControl Content="{Binding DataServices.Codex}" ContentTemplate="{StaticResource DataSourceStatusCardTemplate}" />
+                                            <ContentControl Grid.Column="1" Content="{Binding DataServices.Music}" ContentTemplate="{StaticResource DataSourceStatusCardTemplate}" />
+                                            <ContentControl Grid.Column="2" Content="{Binding DataServices.Weather}" ContentTemplate="{StaticResource DataSourceStatusCardTemplate}" />
+                                            <ContentControl Grid.Column="3" Content="{Binding DataServices.Device}" ContentTemplate="{StaticResource DataSourceStatusCardTemplate}" />
+                                        </Grid>
+
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="16" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <Border x:Name="CodexServiceCard" Style="{StaticResource SectionCard}" MinHeight="236">
+                                                    <StackPanel>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                            <StackPanel>
+                                                                <TextBlock Text="Codex 数据" FontSize="17" FontWeight="SemiBold" />
+                                                                <TextBlock Text="额度与任务共用一次刷新周期，失败时保留上次数据。" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
+                                                            </StackPanel>
+                                                            <TextBlock Grid.Column="1" Text="{Binding DataServices.Codex.Timing}" FontSize="11" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center" />
+                                                        </Grid>
+                                                        <Border Style="{StaticResource InlineSurface}" Padding="14,11" Margin="0,16,0,0">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="210" /></Grid.ColumnDefinitions>
+                                                                <StackPanel VerticalAlignment="Center"><TextBlock Text="额度数据源" FontWeight="SemiBold" /><TextBlock Text="登录凭据由 Codex 管理" FontSize="10" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" /></StackPanel>
+                                                                <TextBlock Grid.Column="1" Text="OpenAI Codex" FontWeight="SemiBold" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                                            </Grid>
+                                                        </Border>
+                                                        <TextBlock Text="{Binding DataServices.Codex.Summary}" FontSize="18" FontWeight="SemiBold" Margin="0,16,0,0" />
+                                                        <TextBlock Text="{Binding DataServices.Codex.Detail}" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                                        <WrapPanel HorizontalAlignment="Right" Margin="0,14,0,0">
+                                                            <Button Content="刷新额度与任务" Style="{StaticResource SecondaryButton}" Click="RefreshCodexDataButton_OnClick" />
+                                                            <Button Content="打开配置" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="CodexOpenConfigButton_OnClick" />
+                                                        </WrapPanel>
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <Border x:Name="MusicServiceCard" Style="{StaticResource SectionCard}" MinHeight="214">
+                                                    <StackPanel>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                            <StackPanel><TextBlock Text="网易云音乐" FontSize="17" FontWeight="SemiBold" /><TextBlock Text="优先读取 Windows 媒体会话，并修正冻结的播放位置。" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" /></StackPanel>
+                                                            <CheckBox x:Name="DataOnlineLyricsCheckBox" Grid.Column="1" Content="在线歌词" VerticalAlignment="Center" Checked="DataOnlineLyricsCheckBox_OnChanged" Unchecked="DataOnlineLyricsCheckBox_OnChanged" />
+                                                        </Grid>
+                                                        <TextBlock Text="{Binding DataServices.Music.Summary}" FontSize="16" FontWeight="SemiBold" Margin="0,16,0,0" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding DataServices.Music.Detail}" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                                        <Border Style="{StaticResource InlineSurface}" Padding="12,9" Margin="0,14,0,0"><TextBlock Text="播放、暂停、拖动和切歌都会重新校准歌词时钟；连续冻结两次后使用单调时钟推进。" FontSize="10" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" /></Border>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="2">
+                                                <Border x:Name="WeatherServiceCard" Style="{StaticResource SectionCard}" MinHeight="236">
+                                                    <StackPanel>
+                                                        <TextBlock Text="天气与定位" FontSize="17" FontWeight="SemiBold" />
+                                                        <TextBlock Text="自动模式使用 Windows 位置服务，不是 IP 定位。" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
+                                                        <Grid Margin="0,14,0,0">
+                                                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                                            <RadioButton x:Name="DataWeatherAutoRadio" GroupName="WeatherMode" Content="Windows 自动定位" Style="{StaticResource SegmentRadio}" HorizontalContentAlignment="Center" IsChecked="True" Checked="DataWeatherMode_OnChanged" />
+                                                            <RadioButton x:Name="DataWeatherManualRadio" Grid.Column="1" GroupName="WeatherMode" Content="手动城市" Style="{StaticResource SegmentRadio}" HorizontalContentAlignment="Center" Checked="DataWeatherMode_OnChanged" />
+                                                        </Grid>
+                                                        <Grid Margin="0,14,0,0">
+                                                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                            <StackPanel><TextBlock Text="{Binding DataServices.Weather.Summary}" FontSize="17" FontWeight="SemiBold" /><TextBlock Text="{Binding DataServices.Weather.Detail}" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" TextWrapping="Wrap" /></StackPanel>
+                                                            <Button x:Name="RelocateWeatherButton" Grid.Column="1" Content="重新定位" Style="{StaticResource SecondaryButton}" Margin="12,0,0,0" Click="RelocateWeatherButton_OnClick" VerticalAlignment="Center" />
+                                                        </Grid>
+                                                        <Grid Margin="0,14,0,0">
+                                                            <Grid.ColumnDefinitions><ColumnDefinition Width="92" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                                            <TextBlock Text="手动回退城市" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                            <TextBox x:Name="DataWeatherCityTextBox" Grid.Column="1" Text="北京" MaxLength="40" TextChanged="DataWeatherCityTextBox_OnTextChanged" />
+                                                        </Grid>
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <Border x:Name="RefreshActivityCard" Style="{StaticResource SectionCard}" MinHeight="214">
+                                                    <StackPanel>
+                                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="刷新活动" FontSize="17" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="{Binding DataServices.LastRefreshText}" FontSize="10" Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center" /></Grid>
+                                                        <Grid Margin="0,14,0,0"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="Codex 额度与任务" /><TextBlock Grid.Column="1" Text="{Binding DataServices.Codex.Timing}" Foreground="{DynamicResource SecondaryText}" /></Grid>
+                                                        <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,10" />
+                                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="网易云媒体会话" /><TextBlock Grid.Column="1" Text="{Binding DataServices.Music.Timing}" Foreground="{DynamicResource SecondaryText}" /></Grid>
+                                                        <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,10" />
+                                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="天气与定位" /><TextBlock Grid.Column="1" Text="{Binding DataServices.Weather.Timing}" Foreground="{DynamicResource SecondaryText}" /></Grid>
+                                                        <Border Style="{StaticResource InlineSurface}" Padding="12,9" Margin="0,14,0,0"><TextBlock Text="{Binding DataServices.OverallStatus}" FontSize="11" FontWeight="SemiBold" /></Border>
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <Border Style="{StaticResource SectionCard}" Padding="16">
+                                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="设备连接" FontSize="15" FontWeight="SemiBold" /><TextBlock Text="{Binding DataServices.Device.Detail}" FontSize="10" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" /></StackPanel><Button Grid.Column="1" Content="测试连接" Style="{StaticResource SecondaryButton}" Click="TestConnectionButton_OnClick" /></Grid>
+                                                </Border>
+                                            </StackPanel>
+                                        </Grid>
+                                    </StackPanel>
+
                                     <StackPanel x:Name="ThemePanel" Visibility="{Binding IsAppearancePage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="16" /><ColumnDefinition /></Grid.ColumnDefinitions>
                                         <Border Style="{StaticResource SectionCard}">
                                             <Grid>
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -365,7 +444,7 @@
                                                 </StackPanel>
                                             </Grid>
                                         </Border>
-                                        <Border Style="{StaticResource SectionCard}">
+                                        <Border Grid.Column="2" Style="{StaticResource SectionCard}">
                                             <Grid>
                                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                                 <StackPanel VerticalAlignment="Center">
@@ -378,6 +457,9 @@
                                                 </StackPanel>
                                             </Grid>
                                         </Border>
+                                        </Grid>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="16" /><ColumnDefinition /></Grid.ColumnDefinitions>
                                         <Border x:Name="FontSettingsCard" Style="{StaticResource SectionCard}">
                                             <StackPanel>
                                                 <TextBlock Text="屏幕字体" FontSize="16" FontWeight="SemiBold" />
@@ -402,8 +484,7 @@
                                                 </Grid>
                                             </StackPanel>
                                         </Border>
-                                        <Grid>
-                                            <Border Height="{Binding ActualHeight, ElementName=FontSettingsCard}" Style="{StaticResource SectionCard}">
+                                            <Border Grid.Column="2" Height="{Binding ActualHeight, ElementName=FontSettingsCard}" Style="{StaticResource SectionCard}">
                                                 <StackPanel>
                                                     <TextBlock Text="主题强调色" FontSize="16" FontWeight="SemiBold" />
                                                     <Grid Margin="0,16,0,0">
@@ -420,48 +501,57 @@
                                                     </Grid>
                                                 </StackPanel>
                                             </Border>
-                                        </Grid>                                        
+                                        </Grid>
                                     </StackPanel>
 
 
-                                    <StackPanel x:Name="AutomationPanel" Visibility="{Binding IsAutomationPage, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <Border x:Name="PushAutomationCard" Style="{StaticResource SectionCard}" Padding="0">
-                                            <Grid>
-                                                <Grid.RowDefinitions><RowDefinition Height="78" /><RowDefinition Height="1" /><RowDefinition Height="82" /></Grid.RowDefinitions>
-                                                <Grid Margin="20,0">
-                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                                    <StackPanel VerticalAlignment="Center">
-                                                        <TextBlock Text="定时推送" FontSize="16" FontWeight="SemiBold" />
-                                                        <TextBlock Text="当前显示方案按设定间隔刷新并推送到设备。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,0" />
-                                                    </StackPanel>
-                                                    <CheckBox x:Name="AutoPushCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Automation.AutoPush, Mode=TwoWay}" />
+                                    <Grid x:Name="AutomationPanel" Visibility="{Binding IsAutomationPage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="1*" /></Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <Border x:Name="PushAutomationCard" Style="{StaticResource SectionCard}" Padding="0">
+                                                <Grid>
+                                                    <Grid.RowDefinitions><RowDefinition Height="78" /><RowDefinition Height="1" /><RowDefinition Height="104" /></Grid.RowDefinitions>
+                                                    <Grid Margin="20,0">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                        <StackPanel VerticalAlignment="Center"><TextBlock Text="定时推送" FontSize="17" FontWeight="SemiBold" /><TextBlock Text="当前显示方案按设定间隔刷新并推送到设备。" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,0" /></StackPanel>
+                                                        <CheckBox x:Name="AutoPushCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Automation.AutoPush, Mode=TwoWay}" />
+                                                    </Grid>
+                                                    <Border Grid.Row="1" Height="1" Margin="20,0" Background="{DynamicResource HairlineBrush}" />
+                                                    <Grid x:Name="RefreshIntervalPanel" Grid.Row="2" Margin="20,0" IsEnabled="{Binding Automation.AutoPush}">
+                                                        <Grid.Style><Style TargetType="Grid"><Setter Property="Opacity" Value="0.48" /><Style.Triggers><DataTrigger Binding="{Binding Automation.AutoPush}" Value="True"><Setter Property="Opacity" Value="1" /></DataTrigger></Style.Triggers></Style></Grid.Style>
+                                                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="刷新间隔" FontSize="14" FontWeight="SemiBold" /><TextBlock Text="拖动选择 1 到 30 秒" FontSize="10" Foreground="{DynamicResource SecondaryText}" Margin="0,4,0,0" /></StackPanel><Border Grid.Column="1" Style="{StaticResource InlineSurface}" Height="36" Width="64"><TextBlock x:Name="RefreshIntervalValueText" Text="{Binding Automation.RefreshSeconds, StringFormat={}{0} 秒}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border></Grid>
+                                                        <Slider x:Name="RefreshIntervalSlider" Grid.Row="1" Minimum="1" Maximum="30" Value="{Binding Automation.RefreshSeconds, Mode=TwoWay}" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,12,0,0" />
+                                                    </Grid>
                                                 </Grid>
-                                                <Border Grid.Row="1" Height="1" Margin="20,0" Background="{DynamicResource HairlineBrush}" />
-                                                <Grid x:Name="RefreshIntervalPanel" Grid.Row="2" Margin="20,0" IsEnabled="{Binding Automation.AutoPush}">
-                                                    <Grid.Style>
-                                                        <Style TargetType="Grid">
-                                                            <Setter Property="Opacity" Value="0.48" />
-                                                            <Style.Triggers><DataTrigger Binding="{Binding Automation.AutoPush}" Value="True"><Setter Property="Opacity" Value="1" /></DataTrigger></Style.Triggers>
-                                                        </Style>
-                                                    </Grid.Style>
-                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="220" /><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="58" /></Grid.ColumnDefinitions>
-                                                    <StackPanel VerticalAlignment="Center"><TextBlock Text="刷新间隔" FontSize="15" FontWeight="SemiBold" /><TextBlock Text="关闭定时推送后，此项不会生效。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,6,0,0" /></StackPanel>
-                                                    <Slider x:Name="RefreshIntervalSlider" Grid.Column="1" Minimum="1" Maximum="30" Value="{Binding Automation.RefreshSeconds, Mode=TwoWay}" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" />
-                                                    <Border Grid.Column="3" Style="{StaticResource InlineSurface}" Height="36" VerticalAlignment="Center"><TextBlock x:Name="RefreshIntervalValueText" Text="{Binding Automation.RefreshSeconds, StringFormat={}{0} 秒}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                                                </Grid>
-                                            </Grid>
-                                        </Border>
-                                        <Border x:Name="AutoMusicCard" Style="{StaticResource SectionCard}">
+                                            </Border>
+                                            <Border x:Name="AutoMusicCard" Style="{StaticResource SectionCard}">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                                    <StackPanel>
-                                                        <TextBlock Text="播放音乐时自动切换" FontSize="15" FontWeight="SemiBold" />
-                                                        <TextBlock x:Name="AutoMusicDescription" Text="检测到媒体播放时显示封面歌词；手动选择其它方案会自动关闭此项。" FontSize="12" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0" />
-                                                    </StackPanel>
-                                                    <CheckBox x:Name="AutoMusicCheckBox" Grid.Column="1" VerticalAlignment="Center" Content="启用" IsChecked="{Binding Automation.AutoSwitchToMusic, Mode=TwoWay}" />
+                                                    <StackPanel><TextBlock Text="播放音乐时自动切换" FontSize="16" FontWeight="SemiBold" /><TextBlock x:Name="AutoMusicDescription" Text="检测到媒体播放时显示封面歌词；手动选择其它方案会自动关闭此项。" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,7,0,0" TextWrapping="Wrap" /><Border Style="{StaticResource InlineSurface}" Padding="12,8" Margin="0,14,0,0"><TextBlock Text="检测来源  Windows 媒体会话" FontSize="10" Foreground="{DynamicResource SecondaryText}" /></Border></StackPanel>
+                                                    <CheckBox x:Name="AutoMusicCheckBox" Grid.Column="1" VerticalAlignment="Top" Content="启用" IsChecked="{Binding Automation.AutoSwitchToMusic, Mode=TwoWay}" />
                                                 </Grid>
-                                        </Border>
-                                    </StackPanel>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2">
+                                            <Border x:Name="AutomationStatusCard" Style="{StaticResource SectionCard}">
+                                                <StackPanel>
+                                                    <TextBlock Text="自动化状态" FontSize="17" FontWeight="SemiBold" />
+                                                    <Border Width="112" Height="112" CornerRadius="56" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="8" HorizontalAlignment="Center" Margin="0,16,0,12">
+                                                        <TextBlock FontSize="15" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="已暂停" /><Style.Triggers><DataTrigger Binding="{Binding Automation.AutoPush}" Value="True"><Setter Property="Text" Value="运行中" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
+                                                    </Border>
+                                                    <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="当前方案" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="1" Text="{Binding Screen.SelectedTheme.DisplayName}" FontWeight="SemiBold" /></Grid>
+                                                    <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,10" />
+                                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="刷新间隔" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="1" Text="{Binding Automation.RefreshSeconds, StringFormat={}{0} 秒}" FontWeight="SemiBold" /></Grid>
+                                                    <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,10" />
+                                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="音乐切换" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="1" FontWeight="SemiBold"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="关闭" /><Style.Triggers><DataTrigger Binding="{Binding Automation.AutoSwitchToMusic}" Value="True"><Setter Property="Text" Value="开启" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></Grid>
+                                                    <Button Content="立即执行一次" Margin="0,16,0,0" Click="RunAutomationNowButton_OnClick" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Style="{StaticResource SectionCard}"><StackPanel><TextBlock Text="最近活动" FontSize="16" FontWeight="SemiBold" /><TextBlock Text="{Binding DataServices.LastRefreshText}" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,12,0,0" /><TextBlock Text="{Binding DataServices.Device.Summary}" FontSize="11" Foreground="{DynamicResource SecondaryText}" Margin="0,8,0,0" /></StackPanel></Border>
+                                        </StackPanel>
+                                    </Grid>
 
                                     <StackPanel x:Name="SettingsPanel" Visibility="{Binding IsSettingsPage, Converter={StaticResource BooleanToVisibilityConverter}}">
                                         <Border Style="{StaticResource SectionCard}" Padding="16">
@@ -584,8 +674,6 @@
                                                 <Grid Margin="0,15,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="1.5*" /><ColumnDefinition Width="2.15*" /></Grid.ColumnDefinitions><TextBlock Text="组件" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="1" Text="许可" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="2" Text="版权信息" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}" /></Grid>
                                                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="1.5*" /><ColumnDefinition Width="2.15*" /></Grid.ColumnDefinitions><TextBlock Text=".NET 8 自包含运行时" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text=".NET Library License" FontSize="11" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="2" Text="Microsoft Corporation" FontSize="11" Foreground="{DynamicResource SecondaryText}" /></Grid>
                                                 <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,12" />
-                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="1.5*" /><ColumnDefinition Width="2.15*" /></Grid.ColumnDefinitions><TextBlock Text="Microsoft Edge WebView2 SDK" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="WebView2 SDK License" FontSize="11" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="2" Text="Microsoft Corporation" FontSize="11" Foreground="{DynamicResource SecondaryText}" /></Grid>
-                                                <Border Height="1" Background="{DynamicResource HairlineBrush}" Margin="0,12" />
                                                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="1.5*" /><ColumnDefinition Width="2.15*" /></Grid.ColumnDefinitions><TextBlock Text="Doto" FontSize="13" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="SIL OFL 1.1" FontSize="11" Foreground="{DynamicResource SecondaryText}" /><TextBlock Grid.Column="2" Text="2024 Doto Project Authors" FontSize="11" Foreground="{DynamicResource SecondaryText}" /></Grid>
                                             </StackPanel>
                                         </Border>
@@ -608,9 +696,10 @@
                                 </Grid>
                             </ScrollViewer>
 
-                            <Border Grid.Column="2" Style="{StaticResource PreviewCard}" Padding="20">
+                            <Border Grid.Column="1" Width="20" Visibility="{Binding IsScreenPage, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <Border x:Name="DevicePreviewRail" Grid.Column="2" Width="288" Style="{StaticResource PreviewCard}" Padding="20" Visibility="{Binding IsScreenPage, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <Grid>
-                                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+									<Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                     <Grid>
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                         <TextBlock Text="预览" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
@@ -622,7 +711,12 @@
                                              Stretch="Uniform" StretchDirection="DownOnly">
                                         <local:DevicePreviewControl x:Name="DevicePreview" />
                                     </Viewbox>
-                                    <Border x:Name="PreviewThemeSummary" Grid.Row="2" Background="{DynamicResource Surface.Control}" BorderBrush="{DynamicResource Stroke.Default}" BorderThickness="1" CornerRadius="10" Padding="11" Margin="0,14,0,0">
+                                    <Grid Grid.Row="2" Margin="0,12,0,0">
+                                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="8" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                        <Button x:Name="PushNowButton" Content="立即推送" Click="TestConnectionButton_OnClick" />
+                                        <Button x:Name="RefreshPreviewRailButton" Grid.Column="2" Content="刷新预览" Style="{StaticResource SecondaryButton}" Click="RefreshScreenDataButton_OnClick" />
+                                    </Grid>
+                                    <Border x:Name="PreviewThemeSummary" Grid.Row="3" Background="{DynamicResource Surface.Control}" BorderBrush="{DynamicResource Stroke.Default}" BorderThickness="1" CornerRadius="10" Padding="11" Margin="0,12,0,0">
                                         <StackPanel>
                                             <TextBlock Text="当前方案" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}" />
                                             <TextBlock Text="{Binding Screen.SelectedTheme.DisplayName}" FontSize="13" FontWeight="SemiBold" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />

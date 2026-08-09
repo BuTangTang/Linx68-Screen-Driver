@@ -62,10 +62,116 @@ internal sealed class NetEaseWindowPlaybackClock
     }
 }
 
+internal sealed class MediaSessionPlaybackClock(Func<TimeSpan>? elapsedProvider = null)
+{
+    private readonly Func<TimeSpan> _elapsedProvider = elapsedProvider ?? ReadMonotonicElapsed;
+    private string? _trackKey;
+    private TimeSpan _lastRawPosition;
+    private TimeSpan _effectivePosition;
+    private TimeSpan _lastObservedAt;
+    private TimeSpan _lastRawChangedAt;
+    private bool _wasPlaying;
+    private int _frozenSampleCount;
+
+    public TimeSpan GetPosition(
+        string trackKey,
+        TimeSpan rawPosition,
+        TimeSpan duration,
+        bool isPlaying)
+    {
+        TimeSpan observedAt = _elapsedProvider();
+        rawPosition = rawPosition < TimeSpan.Zero ? TimeSpan.Zero : rawPosition;
+        if (duration > TimeSpan.Zero && rawPosition > duration)
+        {
+            rawPosition = duration;
+        }
+
+        if (!string.Equals(_trackKey, trackKey, StringComparison.Ordinal))
+        {
+            _trackKey = trackKey;
+            _lastRawPosition = rawPosition;
+            _effectivePosition = rawPosition;
+            _lastObservedAt = observedAt;
+            _lastRawChangedAt = observedAt;
+            _wasPlaying = isPlaying;
+            _frozenSampleCount = 0;
+            return rawPosition;
+        }
+
+        TimeSpan rawDelta = rawPosition - _lastRawPosition;
+        bool rawChanged = rawDelta.Duration() >= TimeSpan.FromMilliseconds(200);
+        if (rawChanged)
+        {
+            _effectivePosition = rawPosition;
+            _lastRawChangedAt = observedAt;
+            _frozenSampleCount = 0;
+        }
+        else if (!isPlaying)
+        {
+            if (rawPosition > _effectivePosition)
+            {
+                _effectivePosition = rawPosition;
+            }
+            _frozenSampleCount = 0;
+        }
+        else if (!_wasPlaying)
+        {
+            if (rawPosition > _effectivePosition)
+            {
+                _effectivePosition = rawPosition;
+            }
+            _lastRawChangedAt = observedAt;
+            _frozenSampleCount = 0;
+        }
+        else
+        {
+            _frozenSampleCount++;
+            if (_frozenSampleCount >= 2)
+            {
+                TimeSpan estimated = rawPosition + (observedAt - _lastRawChangedAt);
+                _effectivePosition = estimated > _effectivePosition
+                    ? estimated
+                    : _effectivePosition + MaxZero(observedAt - _lastObservedAt);
+            }
+        }
+
+        if (duration > TimeSpan.Zero && _effectivePosition > duration)
+        {
+            _effectivePosition = duration;
+        }
+        if (_effectivePosition < TimeSpan.Zero)
+        {
+            _effectivePosition = TimeSpan.Zero;
+        }
+
+        _lastRawPosition = rawPosition;
+        _lastObservedAt = observedAt;
+        _wasPlaying = isPlaying;
+        return _effectivePosition;
+    }
+
+    public void Reset()
+    {
+        _trackKey = null;
+        _lastRawPosition = TimeSpan.Zero;
+        _effectivePosition = TimeSpan.Zero;
+        _lastObservedAt = TimeSpan.Zero;
+        _lastRawChangedAt = TimeSpan.Zero;
+        _wasPlaying = false;
+        _frozenSampleCount = 0;
+    }
+
+    private static TimeSpan MaxZero(TimeSpan value) => value < TimeSpan.Zero ? TimeSpan.Zero : value;
+
+    private static TimeSpan ReadMonotonicElapsed() =>
+        TimeSpan.FromSeconds((double)Stopwatch.GetTimestamp() / Stopwatch.Frequency);
+}
+
 public sealed class WindowsMusicSnapshotSource : IMusicSnapshotSource
 {
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
     private readonly NetEaseWindowPlaybackClock _netEaseWindowPlaybackClock = new();
+    private readonly MediaSessionPlaybackClock _sessionPlaybackClock = new();
 
     public async ValueTask<MusicSnapshot> ReadAsync(CancellationToken cancellationToken = default)
     {
@@ -146,7 +252,7 @@ public sealed class WindowsMusicSnapshotSource : IMusicSnapshotSource
         return null;
     }
 
-    private static async Task<MusicSnapshot?> TryReadSessionAsync(
+    private async Task<MusicSnapshot?> TryReadSessionAsync(
         GlobalSystemMediaTransportControlsSession session,
         CancellationToken cancellationToken)
     {
@@ -176,22 +282,28 @@ public sealed class WindowsMusicSnapshotSource : IMusicSnapshotSource
             TimeSpan duration = timeline.EndTime > timeline.StartTime
                 ? timeline.EndTime - timeline.StartTime
                 : TimeSpan.Zero;
-            TimeSpan position = timeline.Position < TimeSpan.Zero ? TimeSpan.Zero : timeline.Position;
-            if (duration > TimeSpan.Zero && position > duration)
-            {
-                position = duration;
-            }
+            TimeSpan rawPosition = timeline.Position < TimeSpan.Zero ? TimeSpan.Zero : timeline.Position;
+            string sourceAppId = ReadSourceAppId(session);
+            bool isPlaying = playback.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+            string title = string.IsNullOrWhiteSpace(properties.Title) ? "未知曲目" : properties.Title;
+            string artist = properties.Artist ?? string.Empty;
+            string trackKey = $"{sourceAppId}\n{title}\n{artist}\n{properties.AlbumTitle}";
+            TimeSpan position = _sessionPlaybackClock.GetPosition(
+                trackKey,
+                rawPosition,
+                duration,
+                isPlaying);
 
             return new MusicSnapshot(
                 Available: true,
-                string.IsNullOrWhiteSpace(properties.Title) ? "未知曲目" : properties.Title,
-                properties.Artist ?? string.Empty,
+                title,
+                artist,
                 position,
                 duration,
-                playback.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing,
+                isPlaying,
                 artwork)
             {
-                SourceAppId = ReadSourceAppId(session),
+                SourceAppId = sourceAppId,
                 AlbumTitle = properties.AlbumTitle ?? string.Empty
             };
         }

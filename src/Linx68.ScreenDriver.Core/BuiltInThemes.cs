@@ -42,9 +42,12 @@ public static class BuiltInThemes
 			Define(Make("dashboard", "状态概览", "四项系统指标集中展示", "紧凑展示 CPU、内存、下载和上传速度。", Dashboard), ThemeCategory.Monitor, ThemeDataRequirements.System, ThemeSettingsSections.System),
 			Define(Make("performance", "性能条带", "纵向性能条与实时负载", "使用高对比度纵向进度条快速查看 CPU 与内存压力。", Performance), ThemeCategory.Monitor, ThemeDataRequirements.System, ThemeSettingsSections.System),
 			Define(Make("network", "网络监控", "突出显示实时上下行速度", "以大号数字展示下载和上传速度，并保留 CPU 与内存摘要。", Network), ThemeCategory.Monitor, ThemeDataRequirements.System, ThemeSettingsSections.System),
+			Define(new PixelCompanionTheme(), ThemeCategory.Monitor, ThemeDataRequirements.System, ThemeSettingsSections.System),
 			Define(Make("clock-flip", "翻页时钟", "小时与分钟分栏显示", "模拟翻页钟的双卡片布局，并显示秒钟与星期。", FlipClock), ThemeCategory.Time),
 			Define(new FiveDayWeatherTheme(), ThemeCategory.Time, ThemeDataRequirements.Weather, ThemeSettingsSections.Weather),
 			Define(new ClockWeatherTheme(), ThemeCategory.Time, ThemeDataRequirements.Weather, ThemeSettingsSections.Weather),
+			Define(new CityBriefingTheme(), ThemeCategory.Time, ThemeDataRequirements.Weather, ThemeSettingsSections.Weather),
+			Define(new DayRhythmTheme(), ThemeCategory.Time),
 			Define(new MusicTheme(lyricOffsetSeconds), ThemeCategory.Music, ThemeDataRequirements.Music | ThemeDataRequirements.Lyrics, ThemeSettingsSections.Music),
 			Define(new AiQuotaTheme(), ThemeCategory.Information, ThemeDataRequirements.AiQuota | ThemeDataRequirements.CodexTasks, ThemeSettingsSections.AiQuota),
 			Define(new CodexTasksTheme(), ThemeCategory.Information, ThemeDataRequirements.CodexTasks)

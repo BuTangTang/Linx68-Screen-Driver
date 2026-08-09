@@ -15,8 +15,8 @@ Assert(defaults.MinimizeToTray && defaults.CloseToTray, "first-run tray defaults
 Assert(defaults.Weather.UseAutomaticLocation, "first-run weather must use automatic location");
 Assert(defaults.SafeArea == new ScreenInsets(10, 52, 10, 12), "first-run safe area is incorrect");
 Assert(defaults.AppearanceMode == AppearanceMode.System, "first-run appearance must follow Windows");
-Assert(defaults.AiQuota.SourceKind == AiQuotaSourceKind.OpenAICodex,
-    "first-run AI source must default to Codex rate limits");
+Assert(defaults.AiQuota.DisplayName == "Codex",
+    "first-run quota display must default to Codex");
 Assert(defaults.Music.EnableOnlineLyrics,
     "first-run music settings must enable online lyrics");
 
@@ -76,6 +76,25 @@ TimeSpan advancedFallbackPosition = netEaseWindowClock.GetPosition("Demo Track",
 TimeSpan changedTrackPosition = netEaseWindowClock.GetPosition("Next Track", "Demo Artist");
 Assert(advancedFallbackPosition > firstFallbackPosition && changedTrackPosition < advancedFallbackPosition,
     "NetEase fallback playback clock must advance monotonically and reset only when the track changes");
+TimeSpan mediaClockNow = TimeSpan.Zero;
+var mediaSessionClock = new MediaSessionPlaybackClock(() => mediaClockNow);
+TimeSpan mediaPosition = mediaSessionClock.GetPosition("cloudmusic\nDemo", TimeSpan.FromSeconds(10), TimeSpan.FromMinutes(4), true);
+mediaClockNow = TimeSpan.FromSeconds(1);
+TimeSpan firstFrozenPosition = mediaSessionClock.GetPosition("cloudmusic\nDemo", TimeSpan.FromSeconds(10), TimeSpan.FromMinutes(4), true);
+mediaClockNow = TimeSpan.FromSeconds(2);
+TimeSpan recoveredFrozenPosition = mediaSessionClock.GetPosition("cloudmusic\nDemo", TimeSpan.FromSeconds(10), TimeSpan.FromMinutes(4), true);
+mediaClockNow = TimeSpan.FromSeconds(3);
+TimeSpan pausedPosition = mediaSessionClock.GetPosition("cloudmusic\nDemo", TimeSpan.FromSeconds(10), TimeSpan.FromMinutes(4), false);
+mediaClockNow = TimeSpan.FromSeconds(4);
+TimeSpan seekPosition = mediaSessionClock.GetPosition("cloudmusic\nDemo", TimeSpan.FromSeconds(75), TimeSpan.FromMinutes(4), false);
+TimeSpan nextTrackPosition = mediaSessionClock.GetPosition("cloudmusic\nNext", TimeSpan.FromSeconds(3), TimeSpan.FromMinutes(3), true);
+Assert(mediaPosition == TimeSpan.FromSeconds(10)
+       && firstFrozenPosition == mediaPosition
+       && recoveredFrozenPosition >= TimeSpan.FromSeconds(12)
+       && pausedPosition == recoveredFrozenPosition
+       && seekPosition == TimeSpan.FromSeconds(75)
+       && nextTrackPosition == TimeSpan.FromSeconds(3),
+    "media-session playback clock must recover from frozen NetEase positions and rebase on pause, seek and track changes");
 Console.WriteLine("PASS Windows media session ordering and NetEase identifiers");
 
 if (args.Contains("--music-probe", StringComparer.OrdinalIgnoreCase))
@@ -104,7 +123,7 @@ Assert(profile.SafeArea.Top + profile.SafeArea.Bottom < profile.Height, "safe ar
 var renderer = new ScreenRenderer(profile);
 var themeDefinitions = BuiltInThemes.CreateDefinitions(new ImageTheme());
 var themes = themeDefinitions.Select(definition => definition.Theme).ToArray();
-Assert(themes.Length == 10, "built-in theme catalog should contain the 10 confirmed schemes");
+Assert(themes.Length == 13, "built-in theme catalog should contain the 10 retained and 3 new schemes");
 Assert(themes.All(theme => theme.Id is not "calendar" and not "ambient"), "removed calendar/ambient themes must not be registered");
 Assert(themes.All(theme => theme.Id != "clock-seconds"), "removed seconds progress theme must not be registered");
 Assert(themes.All(theme => theme.Id != "week"), "removed week calendar theme must not be registered");
@@ -115,6 +134,10 @@ Assert(themes.All(theme => theme.Id != "codex-info"), "removed combined Codex in
 Assert(themes.Single(theme => theme.Id == "ai-quota").DisplayName == "Codex 额度", "Codex quota theme must use its final display label");
 Assert(themes.Single(theme => theme.Id == "codex-tasks").DisplayName == "Codex 任务", "Codex task theme must be registered");
 Assert(themes.Any(theme => theme.Id == "weather-five-day"), "five-day weather theme must be registered");
+Assert(themes.Single(theme => theme.Id == "city-briefing").DisplayName == "城市晨报"
+       && themes.Single(theme => theme.Id == "day-rhythm").DisplayName == "今日节奏"
+       && themes.Single(theme => theme.Id == "pixel-companion").DisplayName == "像素管家",
+    "the three useful and playful display schemes must be registered with stable ids");
 Assert(themes.All(theme => theme.Id != "stocks"), "removed stock theme must not be registered");
 Assert(BuiltInThemes.NormalizeThemeId("stocks") == "clock-weather", "legacy stock theme must migrate to clock-and-weather");
 Assert(BuiltInThemes.NormalizeThemeId("codex-info") == "ai-quota", "legacy combined Codex theme must migrate to Codex quota");
@@ -126,8 +149,12 @@ Assert(themes.Where(theme => theme.Id.StartsWith("music", StringComparison.Ordin
 Assert(themes.Select(theme => theme.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() == themes.Length, "theme ids should be unique");
 Assert(themeDefinitions.All(definition => definition.Category != ThemeCategory.Other), "every built-in theme must declare a category");
 Assert(themeDefinitions.Single(definition => definition.Id == "weather-five-day").Requires(ThemeDataRequirements.Weather)
-       && themeDefinitions.Single(definition => definition.Id == "clock-weather").Requires(ThemeDataRequirements.Weather),
+       && themeDefinitions.Single(definition => definition.Id == "clock-weather").Requires(ThemeDataRequirements.Weather)
+       && themeDefinitions.Single(definition => definition.Id == "city-briefing").Requires(ThemeDataRequirements.Weather),
     "weather presentations must declare their data requirement");
+Assert(themeDefinitions.Single(definition => definition.Id == "pixel-companion").Requires(ThemeDataRequirements.System)
+       && themeDefinitions.Single(definition => definition.Id == "day-rhythm").DataRequirements == ThemeDataRequirements.None,
+    "new schemes must request only the data they actually use");
 Assert(themeDefinitions.Single(definition => definition.Id == "weather-five-day").Category == ThemeCategory.Time
        && themeDefinitions.Where(definition => definition.Category == ThemeCategory.Information)
            .Select(definition => definition.Id)
@@ -260,6 +287,32 @@ Assert(refreshResult.EffectiveTheme.Id == "ai-quota" && aiReadCount == 1 && code
        && refreshResult.Snapshot.CodexTasks == refreshTasks,
     "quota theme must request AI and Codex task data only when required");
 
+int parallelSourceStarts = 0;
+var parallelSourceRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+refreshResult = await refreshService.RefreshAsync(new DashboardRefreshRequest(
+    themeDefinitions,
+    refreshSettings,
+    "ai-quota",
+    refreshResult.EffectiveTheme.Id,
+    async _ =>
+    {
+        if (Interlocked.Increment(ref parallelSourceStarts) == 2) parallelSourceRelease.TrySetResult(true);
+        await parallelSourceRelease.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        return AiQuotaSnapshot.ForSubscription("Test", 50);
+    },
+    async _ =>
+    {
+        if (Interlocked.Increment(ref parallelSourceStarts) == 2) parallelSourceRelease.TrySetResult(true);
+        await parallelSourceRelease.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        return refreshTasks;
+    }));
+Assert(parallelSourceStarts == 2
+       && refreshResult.Timings is { } parallelTimings
+       && parallelTimings.AiQuota >= TimeSpan.Zero
+       && parallelTimings.CodexTasks >= TimeSpan.Zero
+       && parallelTimings.Total > TimeSpan.Zero,
+    "independent Codex quota and task sources must start in parallel and expose refresh timings");
+
 refreshResult = await refreshService.RefreshAsync(new DashboardRefreshRequest(
     themeDefinitions,
     refreshSettings,
@@ -291,13 +344,15 @@ var weatherResolution = await weatherSettingsResolver.ResolveAsync(new WeatherSe
 });
 Assert(weatherResolution.UsedAutomaticLocationFallback
        && weatherResolution.Settings.LocationQuery == "上海"
-       && !weatherResolution.Settings.UseAutomaticLocation,
+       && !weatherResolution.Settings.UseAutomaticLocation
+       && weatherResolution.LocationResult?.State == DataLoadState.Empty,
     "weather resolver must fall back to the saved city when automatic location is unavailable");
 var availableLocationProvider = new StubAutomaticWeatherLocationProvider(
     new AutomaticWeatherLocation(31.2304, 121.4737, "当前位置"));
 weatherSettingsResolver = new WeatherSettingsResolver(availableLocationProvider);
 weatherResolution = await weatherSettingsResolver.ResolveAsync(new WeatherSettings());
 Assert(!weatherResolution.UsedAutomaticLocationFallback
+       && weatherResolution.LocationResult?.State == DataLoadState.Ready
        && weatherResolution.Settings.Latitude == 31.2304
        && weatherResolution.Settings.AutomaticLocationName == "当前位置",
     "weather resolver must retain automatic coordinates and display name");
@@ -699,12 +754,18 @@ var subscriptionFrame = renderer.Render(
 Assert(subscriptionFrame.JpegBytes is [0xFF, 0xD8, ..]
        && subscriptionFrame.JpegBytes.Length <= profile.MaxJpegBytes,
     "subscription AI quota theme with tasks did not render");
-
-var alternatePlatformFrame = renderer.Render(
+var loadingQuotaFrame = renderer.Render(
     aiQuotaTheme,
-    SystemSnapshot.DesignSample with { AiQuota = subscriptionQuota with { PlatformName = "MiMo" }, CodexTasks = null });
-Assert(!subscriptionFrame.JpegBytes.SequenceEqual(alternatePlatformFrame.JpegBytes),
-    "the quota device frame must render its current platform label instead of a hard-coded Codex name");
+    SystemSnapshot.DesignSample with
+    {
+        AiQuota = AiQuotaSnapshot.Unavailable("Codex"),
+        CodexTasks = null
+    });
+Assert(loadingQuotaFrame.Width == subscriptionFrame.Width
+       && loadingQuotaFrame.Height == subscriptionFrame.Height
+       && loadingQuotaFrame.JpegBytes is [0xFF, 0xD8, ..]
+       && CodexTaskSnapshot.Loading(DateTimeOffset.UtcNow).ErrorMessage is null,
+    "Codex quota loading and ready states must share the same device-frame geometry");
 
 var fullQuotaFrame = renderer.Render(
     aiQuotaTheme,
@@ -995,28 +1056,43 @@ using (var reverseGeocoder = new BigDataCloudReverseGeocoder(reverseGeocodeClien
     Assert(reverseGeocodeHandler.RequestCount == 1, "reverse geocoder should issue one request");
 }
 Console.WriteLine("PASS automatic-location city reverse geocoding");
+if (args.Contains("--weather-location-probe", StringComparer.OrdinalIgnoreCase))
+{
+    using var liveLocationProvider = new WindowsWeatherLocationProvider();
+    AutomaticWeatherLocationResult liveLocation = await liveLocationProvider.TryGetDetailsAsync(forceRefresh: true);
+    Console.WriteLine(liveLocation.Location is null
+        ? $"PROBE Windows location: state={liveLocation.State}; message={liveLocation.Message}"
+        : $"PROBE Windows location: state={liveLocation.State}; city={liveLocation.Location.DisplayName}; source={liveLocation.Message}; cache={liveLocation.FromCache}");
+}
 var daylightOptions = new ScreenDisplayOptions(ColorMode: ScreenColorMode.Daylight);
-var daylightFrame = renderer.Render(themes.Single(theme => theme.Id == "clock-weather"), SystemSnapshot.DesignSample, displayOptions: daylightOptions);
-Assert(daylightFrame.JpegBytes is [0xFF, 0xD8, ..], "daylight clock-and-weather appearance did not render");
-Console.WriteLine("PASS configurable device-screen daylight render");
+var daylightFrames = themes.Select(theme => renderer.Render(theme, SystemSnapshot.DesignSample, displayOptions: daylightOptions)).ToArray();
+Assert(daylightFrames.All(frame => frame.JpegBytes is [0xFF, 0xD8, ..]
+       && frame.Width == 142
+       && frame.Height == 428
+       && frame.JpegBytes.Length <= profile.MaxJpegBytes),
+    "every retained and new scheme must render a valid daylight device frame");
+Console.WriteLine("PASS configurable daylight render for every device scheme");
+
+int newThemePreviewIndex = Array.IndexOf(args, "--new-theme-preview");
+if (newThemePreviewIndex >= 0)
+{
+    Assert(newThemePreviewIndex + 1 < args.Length, "--new-theme-preview requires an output directory");
+    string outputDirectory = Path.GetFullPath(args[newThemePreviewIndex + 1]);
+    Directory.CreateDirectory(outputDirectory);
+    foreach (string themeId in new[] { "city-briefing", "day-rhythm", "pixel-companion" })
+    {
+        IScreenTheme theme = themes.Single(candidate => candidate.Id == themeId);
+        RenderedFrame nightFrame = renderer.Render(theme, SystemSnapshot.DesignSample);
+        RenderedFrame dayFrame = renderer.Render(theme, SystemSnapshot.DesignSample, displayOptions: daylightOptions);
+        await File.WriteAllBytesAsync(Path.Combine(outputDirectory, $"{themeId}-night.jpg"), nightFrame.JpegBytes);
+        await File.WriteAllBytesAsync(Path.Combine(outputDirectory, $"{themeId}-day.jpg"), dayFrame.JpegBytes);
+    }
+    Console.WriteLine($"PASS wrote day/night previews for the three new schemes to {outputDirectory}");
+}
 
 var maxQualityFrame = renderer.Render(themes[0], SystemSnapshot.DesignSample, jpegQuality: 100);
 Assert(maxQualityFrame.JpegBytes.Length <= profile.MaxJpegBytes, "highest-quality JPEG exceeded device limit");
 Console.WriteLine("PASS fixed highest JPEG quality stays within device limit");
-
-var mimoSnapshot = XiaomiMiMoTokenPlanParser.Parse(
-    """
-    {"code":0,"data":{"planCode":"lite","planName":"Lite","currentPeriodEnd":"2026-07-28 23:59:59","expired":false}}
-    """,
-    """
-    {"code":0,"data":{"usage":{"items":[{"name":"total_token","used":1944778516,"limit":4100000000,"percent":0.47},{"name":"compensation_total_token","used":0,"limit":0,"percent":0}]}}}
-    """);
-Assert(mimoSnapshot.PlatformName == "Xiaomi MiMo · Lite", "MiMo plan name was not parsed");
-Assert(Math.Abs(mimoSnapshot.ClampedRemainingPercent - 52.5663776585) < 0.001, "MiMo remaining Credits percentage is incorrect");
-Assert(mimoSnapshot.Balance?.Used == 1_944_778_516m, "MiMo used Credits were not parsed");
-Assert(mimoSnapshot.Balance?.Limit == 4_100_000_000m, "MiMo Credits limit was not parsed");
-Assert(mimoSnapshot.ResetsAt is not null, "MiMo period end was not parsed");
-Console.WriteLine("PASS Xiaomi MiMo Token Plan detail/usage parser");
 
 var aiPreviewArgumentIndex = Array.IndexOf(args, "--ai-preview");
 if (aiPreviewArgumentIndex >= 0)
@@ -1053,7 +1129,7 @@ var settingsPath = Path.Combine(Path.GetTempPath(), $"keyboard-screen-settings-{
 try
 {
     var settingsStore = new JsonSettingsStore(settingsPath);
-    var settings = new AppSettings { AppearanceMode = AppearanceMode.Dark, ScreenColorMode = ScreenColorMode.Daylight, SelectedThemeId = "music", RefreshSeconds = 17, AccentColor = "#A23BFF", SelectedFontId = "file:test.ttf|test", SafeArea = new ScreenInsets(11, 53, 9, 13), AiQuota = new AiQuotaSettings { SourceKind = AiQuotaSourceKind.OpenAICodex, DisplayName = "Codex Pro" }, Weather = new WeatherSettings { LocationQuery = "上海", UseAutomaticLocation = true }, Music = new MusicSettings { EnableOnlineLyrics = true, LyricOffsetSeconds = 1.5 }, ImageTimePlacement = ImageTimePlacement.Top, LaunchAtStartup = true, AutoSwitchToMusic = true, HasCompletedOnboarding = true, HasAcknowledgedCodexNotice = true };
+    var settings = new AppSettings { AppearanceMode = AppearanceMode.Dark, ScreenColorMode = ScreenColorMode.Daylight, SelectedThemeId = "music", RefreshSeconds = 17, AccentColor = "#A23BFF", SelectedFontId = "file:test.ttf|test", SafeArea = new ScreenInsets(11, 53, 9, 13), AiQuota = new AiQuotaSettings { DisplayName = "Codex Pro" }, Weather = new WeatherSettings { LocationQuery = "上海", UseAutomaticLocation = true }, Music = new MusicSettings { EnableOnlineLyrics = true, LyricOffsetSeconds = 1.5 }, ImageTimePlacement = ImageTimePlacement.Top, LaunchAtStartup = true, AutoSwitchToMusic = true, HasCompletedOnboarding = true, HasAcknowledgedCodexNotice = true };
     await settingsStore.SaveAsync(settings);
     var loadedSettings = await settingsStore.LoadAsync();
     Assert(loadedSettings.SelectedThemeId == "music", "settings theme did not persist");
@@ -1063,8 +1139,7 @@ try
     Assert(loadedSettings.AccentColor == "#A23BFF", "settings accent color did not persist");
     Assert(loadedSettings.SelectedFontId == "file:test.ttf|test", "settings font did not persist");
     Assert(loadedSettings.SafeArea == settings.SafeArea, "settings safe area did not persist");
-    Assert(loadedSettings.AiQuota.SourceKind == AiQuotaSourceKind.OpenAICodex
-           && loadedSettings.AiQuota.DisplayName == "Codex Pro", "Codex AI display settings did not persist");
+    Assert(loadedSettings.AiQuota.DisplayName == "Codex Pro", "Codex AI display settings did not persist");
     Assert(loadedSettings.Weather.LocationQuery == "上海" && loadedSettings.Weather.UseAutomaticLocation, "weather location settings did not persist");
     Assert(loadedSettings.LaunchAtStartup, "launch-at-startup setting did not persist");
     Assert(loadedSettings.HasCompletedOnboarding, "onboarding completion did not persist");
@@ -1080,17 +1155,16 @@ try
         "atomic settings save left a temporary file behind");
 
     await File.WriteAllTextAsync(settingsPath, """
-    { "SettingsVersion": 3, "SelectedThemeId": "music-vinyl", "MediaPlayingThemeId": "music-minimal", "MediaIdleThemeId": "music-poster", "AiQuota": { "SourceKind": 0, "DisplayName": "MiMo" } }
+    { "SettingsVersion": 3, "SelectedThemeId": "music-vinyl", "MediaPlayingThemeId": "music-minimal", "MediaIdleThemeId": "music-poster", "AiQuota": { "SourceKind": 0, "DisplayName": "LegacyProvider" } }
     """);
     var migratedSettings = await settingsStore.LoadAsync();
-    Assert(migratedSettings.AiQuota.SourceKind == AiQuotaSourceKind.OpenAICodex
-           && migratedSettings.AiQuota.DisplayName == "Codex"
+    Assert(migratedSettings.AiQuota.DisplayName == "Codex"
            && migratedSettings.SelectedThemeId == "music",
-        "former MiMo and removed music themes must migrate to supported defaults");
+        "legacy quota settings and removed music themes must migrate to supported defaults");
     using var persistedMigration = JsonDocument.Parse(await File.ReadAllTextAsync(settingsPath));
     Assert(persistedMigration.RootElement.GetProperty("SettingsVersion").GetInt32() == AppSettings.CurrentSettingsVersion
-           && persistedMigration.RootElement.GetProperty("AiQuota").GetProperty("SourceKind").GetInt32() == (int)AiQuotaSourceKind.OpenAICodex,
-        "the Codex quota migration must be saved atomically for the next startup");
+           && !persistedMigration.RootElement.GetProperty("AiQuota").TryGetProperty("SourceKind", out _),
+        "legacy quota-source settings must be removed atomically for the next startup");
 
     await File.WriteAllTextAsync(settingsPath, """
     { "SettingsVersion": 7, "SelectedThemeId": "stocks", "Stocks": { "RedForGain": false, "Items": [{ "Symbol": "AAPL" }] } }

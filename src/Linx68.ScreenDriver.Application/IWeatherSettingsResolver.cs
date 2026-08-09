@@ -11,4 +11,5 @@ public interface IWeatherSettingsResolver
 
 public sealed record WeatherSettingsResolution(
     WeatherSettings Settings,
-    bool UsedAutomaticLocationFallback);
+    bool UsedAutomaticLocationFallback,
+    AutomaticWeatherLocationResult? LocationResult = null);

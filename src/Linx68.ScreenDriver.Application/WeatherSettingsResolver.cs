@@ -13,10 +13,21 @@ public sealed class WeatherSettingsResolver(
 
         if (!settings.UseAutomaticLocation)
         {
-            return new WeatherSettingsResolution(CopySavedSettings(settings), false);
+            string city = string.IsNullOrWhiteSpace(settings.LocationQuery) ? "北京" : settings.LocationQuery;
+            return new WeatherSettingsResolution(
+                CopySavedSettings(settings),
+                false,
+                new AutomaticWeatherLocationResult(
+                    DataLoadState.Ready,
+                    null,
+                    $"手动城市 · {city}",
+                    DateTimeOffset.Now));
         }
 
-        AutomaticWeatherLocation? location = await locationProvider.TryGetAsync(cancellationToken);
+        AutomaticWeatherLocationResult locationResult = await locationProvider.TryGetDetailsAsync(
+            forceRefresh: false,
+            cancellationToken);
+        AutomaticWeatherLocation? location = locationResult.Location;
         if (location is null)
         {
             return new WeatherSettingsResolution(
@@ -27,7 +38,8 @@ public sealed class WeatherSettingsResolver(
                         : settings.LocationQuery,
                     UseAutomaticLocation = false
                 },
-                true);
+                true,
+                locationResult);
         }
 
         return new WeatherSettingsResolution(
@@ -39,7 +51,8 @@ public sealed class WeatherSettingsResolver(
                 Longitude = location.Longitude,
                 AutomaticLocationName = location.DisplayName
             },
-            false);
+            false,
+            locationResult);
     }
 
     private static WeatherSettings CopySavedSettings(WeatherSettings settings) => new()

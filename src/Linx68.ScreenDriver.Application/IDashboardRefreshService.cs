@@ -22,4 +22,14 @@ public sealed record DashboardRefreshResult(
     SystemSnapshot Snapshot,
     MusicSnapshot SourceMusic,
     bool EffectiveThemeChanged,
-    bool UsedAutomaticWeatherLocationFallback);
+    bool UsedAutomaticWeatherLocationFallback,
+    AutomaticWeatherLocationResult? WeatherLocation = null,
+    DashboardRefreshTimings? Timings = null);
+
+public sealed record DashboardRefreshTimings(
+    TimeSpan MusicSession,
+    TimeSpan AiQuota,
+    TimeSpan CodexTasks,
+    TimeSpan WeatherLocation,
+    TimeSpan SnapshotBuild,
+    TimeSpan Total);

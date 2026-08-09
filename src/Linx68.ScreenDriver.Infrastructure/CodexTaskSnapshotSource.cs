@@ -532,7 +532,16 @@ public sealed class CodexTaskSnapshotSource : ICodexTaskSnapshotSource
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.ReadWrite | FileShare.Delete);
+            if (stream.Length > MaximumRolloutTailBytes)
+            {
+                stream.Seek(-MaximumRolloutTailBytes, SeekOrigin.End);
+            }
+
             using var reader = new StreamReader(stream, Encoding.UTF8);
+            if (stream.Position > 0)
+            {
+                reader.ReadLine();
+            }
             while (reader.ReadLine() is { } line)
             {
                 if (!line.Contains("update_plan", StringComparison.Ordinal)

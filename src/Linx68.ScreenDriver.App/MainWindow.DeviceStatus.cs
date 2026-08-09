@@ -21,6 +21,10 @@ public partial class MainWindow
 			? brush
 			: (WpfBrush)FindResource("SecondaryText");
 		SetDeviceStatusVisual(brush);
+		_dataServicesViewModel.Device.Set(
+			success ? Linx68.ScreenDriver.Application.DataLoadState.Ready : Linx68.ScreenDriver.Application.DataLoadState.Empty,
+			success ? "设备在线" : "设备离线",
+			success ? _settingsViewModel.EndpointIp : "本地预览仍可使用");
 	}
 
 	private void SetOperationFailure(string message)
@@ -31,6 +35,10 @@ public partial class MainWindow
 		PreviewStatusBadge.ToolTip = "设备推送失败；本地预览仍在本机实时更新";
 		WpfBrush brush = (WpfBrush)FindResource("DangerBrush");
 		SetDeviceStatusVisual(brush);
+		_dataServicesViewModel.Device.Set(
+			Linx68.ScreenDriver.Application.DataLoadState.Error,
+			message,
+			"本地预览仍可使用，请检查设置保存或设备连接");
 	}
 
 	private void SetDeviceStatusVisual(WpfBrush brush)

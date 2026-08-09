@@ -6,6 +6,7 @@ public enum CodexTaskStatus
     WaitingForApproval,
     Completed,
     Recent,
+    Loading,
     Unavailable,
     Empty
 }
@@ -35,6 +36,9 @@ public sealed record CodexTaskSnapshot(
 {
     public static CodexTaskSnapshot Empty(DateTimeOffset timestamp) =>
         new(true, Array.Empty<CodexTaskItem>(), timestamp);
+
+    public static CodexTaskSnapshot Loading(DateTimeOffset timestamp) =>
+        new(false, Array.Empty<CodexTaskItem>(), timestamp);
 
     public static CodexTaskSnapshot Unavailable(DateTimeOffset timestamp, string? errorMessage = null) =>
         new(false, Array.Empty<CodexTaskItem>(), timestamp, errorMessage);

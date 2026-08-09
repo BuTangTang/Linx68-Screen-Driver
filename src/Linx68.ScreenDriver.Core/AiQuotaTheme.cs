@@ -10,7 +10,7 @@ public sealed class AiQuotaTheme : IScreenTheme
     public string Id => "ai-quota";
     public string DisplayName => "Codex 额度";
     public string Description => "额度圆环、重置与任务状态";
-    public string Details => "显示当前平台可用额度与具体重置时间；Codex 模式额外显示运行中或已经完成的任务。";
+    public string Details => "显示当前 Codex 可用额度、具体重置时间以及运行中或已经完成的任务。";
 
     public void Draw(ScreenCanvas canvas, SystemSnapshot snapshot)
     {
@@ -19,7 +19,7 @@ public sealed class AiQuotaTheme : IScreenTheme
         var percent = quota.Available ? quota.ClampedRemainingPercent : 0d;
         var platformName = !string.IsNullOrWhiteSpace(quota.PlatformName)
             ? quota.PlatformName.Trim()
-            : "AI";
+            : "Codex";
 
         canvas.Gradient(Color.FromRgb(19, 17, 38), Color.FromRgb(10, 18, 30), new Point(0, 0), new Point(1, 1));
 
@@ -51,13 +51,7 @@ public sealed class AiQuotaTheme : IScreenTheme
         canvas.FittedText(string.IsNullOrEmpty(resetText) ? "暂未提供重置时间" : resetText, 16, 12, Colors.White,
             new Point(resetCard.Left + 10, resetCard.Top + 24), FontWeights.SemiBold, TextAlignment.Left, resetCard.Width - 20, 21);
 
-        if (snapshot.CodexTasks is not null)
-        {
-            DrawCodexTasks(canvas, safe, snapshot.CodexTasks);
-            return;
-        }
-
-        DrawRemainingCard(canvas, safe, quota);
+        DrawCodexTasks(canvas, safe, snapshot.CodexTasks);
     }
 
     private static void DrawArc(ScreenCanvas canvas, Point center, double radius, double percent, Color color)
@@ -93,16 +87,20 @@ public sealed class AiQuotaTheme : IScreenTheme
         return new Point(center.X + radius * Math.Cos(radians), center.Y + radius * Math.Sin(radians));
     }
 
-    private static void DrawCodexTasks(ScreenCanvas canvas, Rect safe, CodexTaskSnapshot tasks)
+    private static void DrawCodexTasks(ScreenCanvas canvas, Rect safe, CodexTaskSnapshot? tasks)
     {
-        IReadOnlyList<CodexTaskItem> displayTasks = tasks.GetDisplayTasks(2);
+        IReadOnlyList<CodexTaskItem> displayTasks = tasks?.GetDisplayTasks(2) ?? [];
         const double cardHeight = 68;
         const double cardGap = 8;
         double firstCardTop = safe.Bottom - (cardHeight * 2 + cardGap);
         for (int index = 0; index < 2; index++)
         {
             CodexTaskItem? task = CodexTaskCardRenderer.GetTask(displayTasks, index);
-            if (!tasks.Available)
+            if (tasks is null)
+            {
+                task = new CodexTaskItem("正在获取 Codex 任务", CodexTaskStatus.Loading, DateTimeOffset.MinValue);
+            }
+            else if (!tasks.Available)
             {
                 task = new CodexTaskItem("任务状态暂不可用", CodexTaskStatus.Unavailable, DateTimeOffset.MinValue);
             }
@@ -110,31 +108,6 @@ public sealed class AiQuotaTheme : IScreenTheme
             var card = new Rect(safe.Left, firstCardTop + index * (cardHeight + cardGap), safe.Width, cardHeight);
             CodexTaskCardRenderer.Draw(canvas, card, task);
         }
-    }
-
-    private static void DrawRemainingCard(ScreenCanvas canvas, Rect safe, AiQuotaSnapshot quota)
-    {
-        Rect summaryCard = new Rect(safe.Left, safe.Top + 232, safe.Width, 70);
-        canvas.RoundedRect(summaryCard, 13, Color.FromRgb(20, 28, 45), Color.FromRgb(52, 64, 91));
-        canvas.CenteredText("剩余", 8, Color.FromRgb(151, 165, 187),
-            new Rect(summaryCard.Left, summaryCard.Top + 10, summaryCard.Width, 14), FontWeights.SemiBold);
-        canvas.CenteredText(FormatCount(quota), 20, quota.Available ? Colors.White : Color.FromRgb(125, 138, 156),
-            new Rect(summaryCard.Left, summaryCard.Top + 28, summaryCard.Width, 27), FontWeights.Bold);
-    }
-
-    private static string FormatCount(AiQuotaSnapshot quota)
-    {
-        if (!quota.Available)
-        {
-            return "--";
-        }
-
-        if (quota.RemainingCount is { } remainingCount)
-        {
-            return $"{remainingCount} 次";
-        }
-
-        return quota.RemainingDisplay;
     }
 
     private static string FormatReset(AiQuotaSnapshot quota)

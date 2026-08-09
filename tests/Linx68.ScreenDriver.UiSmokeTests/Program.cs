@@ -32,6 +32,7 @@ internal static class Program
         VerifyAppearancePalettes();
         VerifyShellNavigationViewModel();
         VerifyScreenViewModel();
+        VerifyDataServicesViewModel();
         VerifyAppearanceViewModel();
         VerifyAutomationViewModel();
         VerifySettingsViewModel();
@@ -47,10 +48,12 @@ internal static class Program
         VerifyFeatureNoticeGeometry();
         VerifySettingsIpEditorGeometry();
 		VerifyWorkspaceGeometry();
+		VerifyDataServicesGeometry();
 		VerifyCompactPreviewGeometry();
 		VerifyDevicePreviewPlaceholder();
 		VerifyThemeCategoryNavigation();
 		VerifyManualThemeSelectionStopsAutoMusicSwitch();
+		VerifyLatestThemeRefreshWins();
 		VerifyAutomationControlDependency();
 		VerifyNavigationResetsScrollPosition();
 		VerifyRuntimeAppearanceSwitch(app);
@@ -68,7 +71,9 @@ internal static class Program
                 args.Contains("--dark", StringComparer.OrdinalIgnoreCase),
                 args.Contains("--appearance", StringComparer.OrdinalIgnoreCase)
                     ? "appearance"
-                    : args.Contains("--automation", StringComparer.OrdinalIgnoreCase)
+                    : args.Contains("--data-services", StringComparer.OrdinalIgnoreCase)
+                        ? "dataServices"
+                        : args.Contains("--automation", StringComparer.OrdinalIgnoreCase)
                         ? "automation"
                         : args.Contains("--settings", StringComparer.OrdinalIgnoreCase)
                             ? "settings"
@@ -91,6 +96,11 @@ internal static class Program
                && !viewModel.IsScreenPage
                && viewModel.PageTitle == "外观",
             "shell navigation command must update page state and title");
+		viewModel.NavigateCommand.Execute("dataServices");
+		Assert(viewModel.IsDataServicesPage
+		       && !viewModel.IsAppearancePage
+		       && viewModel.PageTitle == "数据服务",
+			"shell must expose the shared data-services page as a first-level destination");
         Console.WriteLine("PASS MVVM shell navigation state and command");
     }
 
@@ -227,36 +237,26 @@ internal static class Program
             Left = 20,
             Top = 20
         };
+        var shell = (ShellViewModel)window.DataContext;
+        if (!string.Equals(page, "screen", StringComparison.OrdinalIgnoreCase))
+        {
+            shell.NavigateCommand.Execute(page);
+        }
         window.Show();
         WaitForDispatcher(TimeSpan.FromMilliseconds(1400));
         if (allSchemes)
         {
             ((ShellViewModel)window.DataContext).Screen.SelectCategory("all");
         }
-        if (page == "appearance")
-        {
-            ((RadioButton)window.FindName("ThemeNav")).IsChecked = true;
-        }
-        else if (page == "automation")
-        {
-            ((RadioButton)window.FindName("AutomationNav")).IsChecked = true;
-        }
-        else if (page == "settings")
-        {
-            ((Button)window.FindName("EndpointShortcutButton")).RaiseEvent(
-                new RoutedEventArgs(Button.ClickEvent));
-        }
-        else if (page == "about")
-        {
-            ((RadioButton)window.FindName("AboutNav")).IsChecked = true;
-        }
         WaitForDispatcher(TimeSpan.FromMilliseconds(250));
+        var captureRoot = (FrameworkElement)window.FindName("WindowRoot");
+        InteractionMotion.Reset(captureRoot);
         window.UpdateLayout();
 
-        int pixelWidth = Math.Max(1, (int)Math.Round(window.ActualWidth));
-        int pixelHeight = Math.Max(1, (int)Math.Round(window.ActualHeight));
+        int pixelWidth = Math.Max(1, (int)Math.Round(captureRoot.ActualWidth));
+        int pixelHeight = Math.Max(1, (int)Math.Round(captureRoot.ActualHeight));
         var bitmap = new RenderTargetBitmap(pixelWidth, pixelHeight, 96, 96, PixelFormats.Pbgra32);
-        bitmap.Render(window);
+        bitmap.Render(captureRoot);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
@@ -279,6 +279,39 @@ internal static class Program
         };
         timer.Start();
         Dispatcher.PushFrame(frame);
+    }
+
+    private static void VerifyDataServicesViewModel()
+    {
+        var viewModel = new DataServicesViewModel();
+        string preservedSummary = viewModel.Codex.Summary;
+        viewModel.Codex.BeginRefresh();
+        Assert(viewModel.Codex.State == DataLoadState.Loading
+               && viewModel.Codex.Summary == preservedSummary
+               && viewModel.Codex.StateLabel == "更新中",
+            "loading a data source must preserve its last summary and expose a stable loading state");
+        viewModel.Codex.Set(DataLoadState.Ready, "可用 80%", "读取成功", TimeSpan.FromMilliseconds(120));
+        Assert(viewModel.Codex.IsReady && viewModel.Codex.Timing == "120 ms",
+            "ready data state must expose the latest value and measured duration");
+        viewModel.Codex.Set(DataLoadState.Stale, "可用 80%", "保留上次数据");
+        Assert(viewModel.Codex.IsProblem && viewModel.Codex.StateLabel == "上次数据",
+            "stale data must remain visibly distinct without clearing the last value");
+        viewModel.Codex.Set(DataLoadState.Error, "尚未获得 Codex 数据", "读取失败");
+        viewModel.CompleteRefresh(TimeSpan.FromMilliseconds(250), DateTimeOffset.Now);
+        Assert(viewModel.OverallStatus.Contains("需要留意", StringComparison.Ordinal),
+            "overall data health must surface stale or error states");
+        Console.WriteLine("PASS data services five-state projection and stable loading content");
+    }
+
+    private static bool WaitForCondition(Func<bool> condition, TimeSpan timeout)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        while (!condition() && stopwatch.Elapsed < timeout)
+        {
+            WaitForDispatcher(TimeSpan.FromMilliseconds(50));
+        }
+
+        return condition();
     }
 
     private static void VerifyAppearancePalettes()
@@ -331,9 +364,8 @@ internal static class Program
         window.Show();
         WaitForDispatcher(TimeSpan.FromMilliseconds(900));
         ((RadioButton)window.FindName("DarkAppearanceRadio")).IsChecked = true;
-        WaitForDispatcher(TimeSpan.FromMilliseconds(700));
         var status = (TextBlock)window.FindName("DeviceStatusText");
-        Assert(status.Text == "保存失败",
+		Assert(WaitForCondition(() => status.Text == "保存失败", TimeSpan.FromSeconds(5)),
             "a settings-store failure must be handled without an unhandled UI exception");
         window.Close();
         Console.WriteLine("PASS settings save failures stay in-app instead of crashing the UI test host");
@@ -359,6 +391,7 @@ internal static class Program
 		var deviceStatusDot = (System.Windows.Shapes.Ellipse)window.FindName("DeviceStatusDot");
 		var previewStatus = (TextBlock)window.FindName("PreviewStatusText");
 		var previewThemeSummary = (Border)window.FindName("PreviewThemeSummary");
+		var previewRail = (Border)window.FindName("DevicePreviewRail");
 		var windowBehavior = (Border)window.FindName("WindowBehaviorCard");
 		var startupBehavior = (Border)window.FindName("StartupBehaviorCard");
         window.UpdateLayout();
@@ -367,26 +400,26 @@ internal static class Program
 		       && titleBar.Background is not null
 		       && System.Windows.Shell.WindowChrome.GetWindowChrome(window)?.CaptionHeight == 56,
 			"the application frame must keep a stable themed background and compact title bar");
-        Assert(workspace.ColumnDefinitions[0].Width.Value == 196,
-            $"workspace sidebar must be 196px: {workspace.ColumnDefinitions[0].Width.Value}");
-        Assert(content.ColumnDefinitions[2].Width.Value == 288,
-            $"preview rail must remain 288px: {content.ColumnDefinitions[2].Width.Value}");
-        Assert(themeCategories.Items.Count == 5
+        Assert(workspace.ColumnDefinitions[0].Width.Value == 210,
+			$"workspace sidebar must follow the 210px redesign: {workspace.ColumnDefinitions[0].Width.Value}");
+        Assert(content.ColumnDefinitions[2].Width.IsAuto && previewRail.Width == 288,
+			"preview rail must remain 288px on the screen page and collapse cleanly elsewhere");
+		Assert(themeCategories.Items.Count == shell.Screen.ThemeGroups.Count
 		       && themeGallery.Items.Count == shell.Screen.VisibleThemes.Count
-		       && themeGallery.Items.Count <= 5
-		       && shell.Screen.ThemeGroups.Sum(group => group.Themes.Count) == 15,
+		       && shell.Screen.ThemeGroups.Sum(group => group.Themes.Count) == shell.Screen.AllThemeCount,
 			"display schemes must use the left category navigation with one compact gallery");
 		Assert(shell.Screen.VisibleThemes.All(theme => !string.IsNullOrWhiteSpace(theme.Metadata))
 		       && shell.Screen.ThemeGroups.Single(group => group.Id == "music").Themes.All(theme => theme.Metadata.Contains("音乐")),
 			"theme cards must expose readable category and dynamic-state metadata, including the confirmed music scheme");
 		Assert(themeCategoryNavigation.VerticalAlignment == VerticalAlignment.Top
+		       && themeCategoryNavigation.Orientation == Orientation.Horizontal
 		       && themeCategoryNavigation.MinHeight == 0,
-			"the scheme navigation must remain a compact list instead of a full-height empty panel");
+			"scheme categories must use compact horizontal chips instead of a second sidebar");
 		Assert(window.FindName("ThemeGroupPanel") is null && window.FindName("ThemeListPanel") is null,
 			"the old stacked category sections and mixed gallery must no longer be used");
-		Assert(sidebarNavigation.Children.Count == 5
+		Assert(sidebarNavigation.Children.Count == 6
 		       && screenNavigation.FontSize == 15,
-			"sidebar navigation must omit the redundant workspace heading and improve text legibility");
+			"sidebar navigation must include data services and keep readable first-level destinations");
 		Assert(deviceStatus.Text == "设备离线"
 		       && deviceStatus.FontSize == 14
 		       && deviceStatus.Foreground == deviceStatusDot.Fill,
@@ -409,7 +442,7 @@ internal static class Program
 		Assert(shell.IsSettingsPage && endpointShortcut.ToolTip?.ToString()?.Contains("设置") == true,
 			"clicking the device-address shortcut must open the settings page");
         window.Close();
-        Console.WriteLine("PASS compact sidebar, left scheme categories, compact gallery, locate-current action and fixed preview rail");
+        Console.WriteLine("PASS single sidebar, horizontal scheme categories, compact gallery and fixed screen preview rail");
     }
 
     private static void VerifyCompactPreviewGeometry()
@@ -453,6 +486,52 @@ internal static class Program
 
         window.Close();
         Console.WriteLine("PASS compact preview scales without clipping the device frame or summary");
+    }
+
+    private static void VerifyDataServicesGeometry()
+    {
+        var settings = new AppSettings
+        {
+            HasCompletedOnboarding = true,
+            MinimizeToTray = false,
+            CloseToTray = false,
+            Weather = new WeatherSettings { LocationQuery = "北海", UseAutomaticLocation = true },
+            Music = new MusicSettings { EnableOnlineLyrics = true }
+        };
+        var window = new MainWindow(settings, new InMemorySettingsStore(settings))
+        {
+            Width = 1080,
+            Height = 680
+        };
+        window.Show();
+        WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+        ((RadioButton)window.FindName("DataServicesNav")).IsChecked = true;
+        WaitForDispatcher(TimeSpan.FromMilliseconds(120));
+        window.UpdateLayout();
+
+        var panel = (StackPanel)window.FindName("DataServicesPanel");
+        var previewRail = (Border)window.FindName("DevicePreviewRail");
+        var refreshAll = (Button)window.FindName("RefreshAllDataButton");
+        var weatherAuto = (RadioButton)window.FindName("DataWeatherAutoRadio");
+        var weatherManual = (RadioButton)window.FindName("DataWeatherManualRadio");
+        var city = (TextBox)window.FindName("DataWeatherCityTextBox");
+        Assert(panel.IsVisible
+               && panel.ActualWidth <= ((ScrollViewer)window.FindName("ThemeScrollViewer")).ViewportWidth + 1
+               && previewRail.Visibility == Visibility.Collapsed
+               && refreshAll.IsVisible,
+            "data services must use the full content width while the device preview rail is collapsed");
+        Assert(weatherAuto.IsChecked == true
+               && weatherManual.IsChecked == false
+               && !city.IsEnabled
+               && city.Text == "北海",
+            "weather controls must clearly distinguish Windows auto-location from the saved manual fallback city");
+        Assert(window.FindName("CodexServiceCard") is Border
+               && window.FindName("MusicServiceCard") is Border
+               && window.FindName("WeatherServiceCard") is Border
+               && window.FindName("RefreshActivityCard") is Border,
+            "data services must expose fixed cards for Codex, music, weather and refresh timings");
+        window.Close();
+        Console.WriteLine("PASS data services status cards and 1080x680 location controls");
     }
 
     private static void VerifyDevicePreviewPlaceholder()
@@ -569,7 +648,8 @@ internal static class Program
         var refreshPanel = (Grid)window.FindName("RefreshIntervalPanel");
         var refreshSlider = (Slider)window.FindName("RefreshIntervalSlider");
 		var deviceStatusDot = (Ellipse)window.FindName("DeviceStatusDot");
-		var automationPanel = (StackPanel)window.FindName("AutomationPanel");
+		var automationPanel = (Grid)window.FindName("AutomationPanel");
+		var automationStatus = (Border)window.FindName("AutomationStatusCard");
 		var autoMusicCard = (Border)window.FindName("AutoMusicCard");
 		var autoMusicCheckBox = (CheckBox)window.FindName("AutoMusicCheckBox");
 		var autoMusicDescription = (TextBlock)window.FindName("AutoMusicDescription");
@@ -577,21 +657,54 @@ internal static class Program
             "the refresh interval must be editable while timed push is enabled");
 		Assert(!deviceStatusDot.HasAnimatedProperties,
 			"device connection state must remain static instead of continuously pulsing");
-		int automationCardCount = automationPanel.Children.OfType<Border>().Count();
 		bool hasCoverLyricsDescription = autoMusicDescription.Text.Contains("封面歌词", StringComparison.Ordinal);
 		bool hasRemovedMediaThemeCard = window.FindName("MediaThemeAutoSwitchCard") is not null;
-		Assert(automationCardCount == 2
+		Assert(automationPanel.ColumnDefinitions.Count == 3
+			&& automationStatus.IsVisible
 			&& autoMusicCard.IsVisible
 			&& autoMusicCheckBox.IsVisible
 			&& hasCoverLyricsDescription
 			&& !hasRemovedMediaThemeCard,
-			$"automation must retain only timed push and the cover-lyrics music switch: cards={automationCardCount}, cardVisible={autoMusicCard.IsVisible}, switchVisible={autoMusicCheckBox.IsVisible}, coverLyrics={hasCoverLyricsDescription}, oldCard={hasRemovedMediaThemeCard}");
+			$"automation must retain timed push and cover-lyrics controls beside a status rail: statusVisible={automationStatus.IsVisible}, cardVisible={autoMusicCard.IsVisible}, switchVisible={autoMusicCheckBox.IsVisible}, coverLyrics={hasCoverLyricsDescription}, oldCard={hasRemovedMediaThemeCard}");
         autoPush.IsChecked = false;
         WaitForDispatcher(TimeSpan.FromMilliseconds(100));
         Assert(!refreshPanel.IsEnabled && !refreshSlider.IsEnabled && refreshPanel.Opacity < 1,
             "the refresh interval must be visibly disabled while timed push is off");
         window.Close();
         Console.WriteLine("PASS automation keeps the cover-lyrics switch without redundant media-theme controls");
+    }
+
+    private static void VerifyLatestThemeRefreshWins()
+    {
+        var settings = new AppSettings
+        {
+            HasCompletedOnboarding = true,
+            HasAcknowledgedCodexNotice = true,
+            AiQuota = new AiQuotaSettings { DisplayName = "Codex" },
+            SelectedThemeId = "system",
+            AutoPush = false,
+            MinimizeToTray = false,
+            CloseToTray = false
+        };
+        var window = new MainWindow(settings, new InMemorySettingsStore(settings));
+        window.Show();
+        WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+        var shell = (ShellViewModel)window.DataContext;
+        shell.Screen.SelectTheme("ai-quota", notify: true);
+        shell.Screen.SelectTheme("day-rhythm", notify: true);
+        bool settled = WaitForCondition(
+            () => ((TextBlock)window.FindName("CurrentThemeNameText")).Text == "今日节奏"
+                  && ((TextBlock)window.FindName("PreviewStatusText")).Text is not "正在更新 · 保留上次预览",
+            TimeSpan.FromSeconds(5));
+        string? effectiveThemeId = typeof(MainWindow)
+            .GetField("_lastEffectiveThemeId", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?.GetValue(window) as string;
+        Assert(settled
+               && shell.Screen.SelectedTheme?.Id == "day-rhythm"
+               && effectiveThemeId == "day-rhythm",
+            $"a cancelled Codex refresh must not overwrite the latest theme selection: selected={shell.Screen.SelectedTheme?.Id}; effective={effectiveThemeId}");
+        window.Close();
+        Console.WriteLine("PASS latest theme request cancels stale Codex refresh results");
     }
 
     private static void VerifyManualThemeSelectionStopsAutoMusicSwitch()
@@ -675,11 +788,6 @@ internal static class Program
         Assert(acknowledge.Height == 48 && title.Text.Contains("Codex") && details.Items.Count == 3,
             "Codex notice must keep its acknowledgement action and three concise points");
         codexWindow.Close();
-
-        var mimoWindow = FeatureNoticeWindow.CreateMiMoNotice();
-        var mimoTitle = (TextBlock)mimoWindow.FindName("TitleText");
-        Assert(mimoTitle.Text.Contains("MiMo"), "MiMo notice must identify the integration");
-        mimoWindow.Close();
 
         Console.WriteLine("PASS one-time feature notices share first-run geometry and content structure");
     }

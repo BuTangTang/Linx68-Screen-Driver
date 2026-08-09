@@ -56,6 +56,8 @@ public partial class MainWindow : Window
 
 	private readonly AppearanceViewModel _appearanceViewModel;
 
+	private readonly DataServicesViewModel _dataServicesViewModel;
+
 	private readonly AutomationViewModel _automationViewModel;
 
 	private readonly SettingsViewModel _settingsViewModel;
@@ -77,8 +79,6 @@ public partial class MainWindow : Window
 	private ScreenRenderer _renderer = new ScreenRenderer();
 
 	private RenderedFrame? _latestFrame;
-
-	private MiMoTokenPlanWindow? _miMoWindow;
 
 	private readonly CodexSetupService _codexSetupService = new();
 
@@ -112,6 +112,8 @@ public partial class MainWindow : Window
 
 	private bool _updatingSettingsPage;
 
+	private bool _updatingDataServices;
+
 	private bool _autoCommitRunning;
 
 	private bool _autoCommitPending;
@@ -135,6 +137,24 @@ public partial class MainWindow : Window
 	private System.Windows.Controls.TextBox[] _endpointParts = [];
 
 	private bool _themeGalleryPreviewDirty;
+
+	private CancellationTokenSource? _refreshCancellation;
+
+	private long _refreshVersion;
+
+	private TimeSpan _lastRefreshDuration;
+
+	private DateTimeOffset? _lastRefreshCompletedAt;
+
+	private TimeSpan? _lastCodexQuotaDuration;
+
+	private TimeSpan? _lastCodexTaskDuration;
+
+	private string? _lastCodexQuotaError;
+
+	private string? _lastCodexTaskError;
+
+	private AutomaticWeatherLocationResult? _lastWeatherLocationResult;
 
 	public MainWindow(AppSettings? initialSettings = null)
 		: this(
@@ -255,6 +275,7 @@ public partial class MainWindow : Window
 		DataContext = shellViewModel;
 		_screenViewModel = shellViewModel.Screen;
 		_appearanceViewModel = shellViewModel.Appearance;
+		_dataServicesViewModel = shellViewModel.DataServices;
 		_automationViewModel = shellViewModel.Automation;
 		_settingsViewModel = shellViewModel.Settings;
 		_screenViewModel.ThemeSelected += ScreenViewModel_OnThemeSelected;
@@ -290,6 +311,9 @@ public partial class MainWindow : Window
 		{
 			_timer.Stop();
 			_autoCommitTimer.Stop();
+			_refreshCancellation?.Cancel();
+			_refreshCancellation?.Dispose();
+			_refreshCancellation = null;
 			if (_ownsServices)
 			{
 				(_transport as IDisposable)?.Dispose();
@@ -304,7 +328,6 @@ public partial class MainWindow : Window
 			_appearanceViewModel.PropertyChanged -= AppearanceViewModel_OnPropertyChanged;
 			_automationViewModel.PropertyChanged -= AutomationViewModel_OnPropertyChanged;
 			_settingsViewModel.PropertyChanged -= SettingsViewModel_OnPropertyChanged;
-			_miMoWindow?.Dispose();
 			SystemEvents.UserPreferenceChanged -= SystemEvents_OnUserPreferenceChanged;
 			_trayIcon.Visible = false;
 			_trayIcon.ContextMenuStrip?.Dispose();
@@ -380,12 +403,6 @@ public partial class MainWindow : Window
 		{
 			AiQuotaSettings aiQuotaSettings = (settings.AiQuota = new AiQuotaSettings());
 		}
-		AiQuotaSourceKind aiSourceKind = _settings.AiQuota.SourceKind;
-		SelectComboByTag(AiSourceComboBox, aiSourceKind == AiQuotaSourceKind.OpenAICodex ? "Codex" : "MiMo");
-		AiDisplayNameTextBox.Text = string.IsNullOrWhiteSpace(_settings.AiQuota.DisplayName)
-			? GetDefaultAiDisplayName(aiSourceKind)
-			: _settings.AiQuota.DisplayName;
-		UpdateAiSourceUi();
 		_settings.Weather ??= new WeatherSettings();
 		WeatherAutomaticLocationCheckBox.IsChecked = _settings.Weather.UseAutomaticLocation;
 		WeatherLocationTextBox.Text = string.IsNullOrWhiteSpace(_settings.Weather.LocationQuery) ? "北京" : _settings.Weather.LocationQuery;
@@ -393,6 +410,7 @@ public partial class MainWindow : Window
 		_settings.Music ??= new MusicSettings();
 		OnlineLyricsCheckBox.IsChecked = _settings.Music.EnableOnlineLyrics;
 		LyricOffsetSlider.Value = Math.Clamp(_settings.Music.LyricOffsetSeconds, -3, 3);
+		SyncDataServiceControlsFromSettings();
 		_imageTheme.ImagePath = _settings.ImagePath;
 		SelectTheme(_settings.SelectedThemeId);
 		UpdateEndpointSummary();
@@ -410,7 +428,6 @@ public partial class MainWindow : Window
 		_settings.SelectedThemeId = GetSelectedTheme()?.Id ?? "system";
 		_settings.AiQuota = new AiQuotaSettings
 		{
-			SourceKind = ReadAiSourceKind(),
 			DisplayName = ReadAiDisplayName()
 		};
 		_settings.Weather = new WeatherSettings
@@ -476,13 +493,9 @@ public partial class MainWindow : Window
 		{
 			return;
 		}
-		if (_busy)
-		{
-			ScheduleAutoCommit();
-			return;
-		}
 		if (_autoCommitRunning)
 		{
+			_refreshCancellation?.Cancel();
 			_autoCommitPending = true;
 			return;
 		}
@@ -491,19 +504,21 @@ public partial class MainWindow : Window
 		{
 			ApplyControlsToSettings();
 			await _settingsStore.SaveAsync(_settings);
-			bool pushedCachedPreview = preferCachedPreview && TryRenderLatestSnapshot();
-			if (pushedCachedPreview)
+			if (preferCachedPreview)
 			{
-				await PushLatestAsync(force: true);
+				TryRenderLatestSnapshot();
 			}
-			await RefreshPreviewAsync();
+			bool refreshed = await RefreshPreviewAsync();
 			if (_themeGalleryPreviewDirty)
 			{
 				_themeGalleryPreviewDirty = false;
 				BuildThemeList();
 			}
 			_mediaAutomationThemeChanged = false;
-			await PushLatestAsync(force: true);
+			if (refreshed)
+			{
+				await PushLatestAsync(force: true);
+			}
 		}
 		catch (Exception ex)
 		{
@@ -548,16 +563,38 @@ public partial class MainWindow : Window
 		}
 	}
 
-	private async Task RefreshPreviewAsync()
+	private async Task<bool> RefreshPreviewAsync()
 	{
-		if (_busy || !_loaded)
+		if (!_loaded)
 		{
-			return;
+			return false;
 		}
+
+		var refreshCancellation = new CancellationTokenSource();
+		CancellationTokenSource? previousRefresh = Interlocked.Exchange(
+			ref _refreshCancellation,
+			refreshCancellation);
+		previousRefresh?.Cancel();
+		long refreshVersion = Interlocked.Increment(ref _refreshVersion);
+		var stopwatch = Stopwatch.StartNew();
 		_busy = true;
+		_dataServicesViewModel.Music.BeginRefresh("保留上次媒体信息 · 正在检测 Windows 媒体会话");
+		if (_latestFrame is not null)
+		{
+			PreviewStatusText.Text = "正在更新 · 保留上次预览";
+		}
 		try
 		{
 			ThemeDefinition selectedDefinition = GetSelectedThemeDefinition() ?? _themeDefinitions[0];
+			if (selectedDefinition.Requires(ThemeDataRequirements.AiQuota)
+				|| selectedDefinition.Requires(ThemeDataRequirements.CodexTasks))
+			{
+				_dataServicesViewModel.Codex.BeginRefresh();
+			}
+			if (selectedDefinition.Requires(ThemeDataRequirements.Weather))
+			{
+				_dataServicesViewModel.Weather.BeginRefresh();
+			}
 			DashboardRefreshResult refresh = await _refreshService.RefreshAsync(
 				new DashboardRefreshRequest(
 					_themeDefinitions,
@@ -565,12 +602,19 @@ public partial class MainWindow : Window
 					selectedDefinition.Id,
 					_lastEffectiveThemeId,
 					ReadAiQuotaAsync,
-					ReadCodexTasksAsync));
+					ReadCodexTasksAsync),
+				refreshCancellation.Token);
+			refreshCancellation.Token.ThrowIfCancellationRequested();
+			if (refreshVersion != Volatile.Read(ref _refreshVersion))
+			{
+				return false;
+			}
 			ThemeDefinition effectiveDefinition = refresh.EffectiveTheme;
 			IScreenTheme theme2 = effectiveDefinition.Theme;
 			_mediaAutomationThemeChanged = refresh.EffectiveThemeChanged;
 			_lastEffectiveThemeId = theme2.Id;
 			_automaticLocationFallback = refresh.UsedAutomaticWeatherLocationFallback;
+			_lastWeatherLocationResult = refresh.WeatherLocation ?? _lastWeatherLocationResult;
 			bool needsLyrics = effectiveDefinition.Requires(ThemeDataRequirements.Lyrics);
 			bool needsWeather = effectiveDefinition.Requires(ThemeDataRequirements.Weather);
 			_latestSnapshot = refresh.Snapshot;
@@ -590,6 +634,12 @@ public partial class MainWindow : Window
 			string musicSource = ResolveMusicSourceName(musicSnapshot.SourceAppId);
 			string album = string.IsNullOrWhiteSpace(musicSnapshot.AlbumTitle) ? string.Empty : $" · 专辑：{musicSnapshot.AlbumTitle}";
 			MusicSourceText.Text = (musicSnapshot.Available ? $"{musicSource} · {(musicSnapshot.IsPlaying ? "正在播放" : "已暂停")} · {musicSnapshot.Title}  —  {musicSnapshot.Artist}{album}{lyricStatus}" : "当前没有可用的 Windows 媒体会话");
+			UpdateMusicDataServiceStatus(musicSnapshot);
+			if (refresh.Timings is { } timings)
+			{
+				_dataServicesViewModel.Music.Timing = $"{timings.MusicSession.TotalMilliseconds:0} ms";
+			}
+			UpdateCodexDataServiceStatus();
 			if (weather is { Available: true })
 			{
 				WeatherSourceStatusText.Text = $"{(_automaticLocationFallback ? "自动定位不可用，已使用 " : string.Empty)}{weather.LocationName} · {weather.TemperatureC:0}° · {weather.ConditionText}{(weather.IsStale ? " · 上次数据" : string.Empty)}";
@@ -598,92 +648,83 @@ public partial class MainWindow : Window
 			{
 				WeatherSourceStatusText.Text = weather?.ErrorMessage ?? "暂时无法获取天气数据";
 			}
+			UpdateWeatherDataServiceStatus(weather, refresh.WeatherLocation, needsWeather);
+			if (refresh.Timings is { } weatherTimings && needsWeather)
+			{
+				_dataServicesViewModel.Weather.Timing = $"{weatherTimings.WeatherLocation.TotalMilliseconds + weatherTimings.SnapshotBuild.TotalMilliseconds:0} ms";
+			}
+
+			stopwatch.Stop();
+			_lastRefreshDuration = refresh.Timings?.Total ?? stopwatch.Elapsed;
+			_lastRefreshCompletedAt = DateTimeOffset.Now;
+			_dataServicesViewModel.CompleteRefresh(_lastRefreshDuration, _lastRefreshCompletedAt.Value);
+			PreviewStatusText.Text = "本地预览";
+			return true;
+		}
+		catch (OperationCanceledException) when (refreshCancellation.IsCancellationRequested)
+		{
+			return false;
 		}
 		catch (Exception ex)
 		{
 			Trace.TraceWarning($"Failed to refresh display preview: {ex}");
+			if (refreshVersion == Volatile.Read(ref _refreshVersion))
+			{
+				PreviewStatusText.Text = _latestFrame is null ? "预览失败" : "上次预览 · 刷新失败";
+			}
+			return false;
 		}
 		finally
 		{
-			_busy = false;
+			if (ReferenceEquals(
+				Interlocked.CompareExchange(ref _refreshCancellation, null, refreshCancellation),
+				refreshCancellation))
+			{
+				_busy = false;
+			}
+			refreshCancellation.Dispose();
 		}
 	}
 
 	private async Task<AiQuotaSnapshot?> ReadAiQuotaAsync(CancellationToken cancellationToken = default)
 	{
-		if (ReadAiSourceKind() == AiQuotaSourceKind.OpenAICodex)
-		{
-			return await ReadCodexQuotaAsync(force: false, cancellationToken);
-		}
-
-		if (_miMoWindow == null)
-		{
-			AiSourceStatusText.Text = "请先登录小米控制台";
-			return _latestAiQuota is null ? AiQuotaSnapshot.Empty : ApplyAiDisplayName(_latestAiQuota);
-		}
-		try
-		{
-			return UpdateAiQuotaUsage(await _miMoWindow.ReadAsync(cancellationToken));
-		}
-		catch (Exception ex)
-		{
-			AiSourceStatusText.Text = ex.Message;
-			AiSourceStatusText.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 74, 84));
-			return _latestAiQuota is null ? AiQuotaSnapshot.Empty : ApplyAiDisplayName(_latestAiQuota);
-		}
+		return await ReadCodexQuotaAsync(force: false, cancellationToken);
 	}
 
 	private async Task<CodexTaskSnapshot?> ReadCodexTasksAsync(CancellationToken cancellationToken = default)
 	{
-		bool isAiQuotaTheme = string.Equals(
-			GetSelectedThemeDefinition()?.Id,
-			"ai-quota",
-			StringComparison.OrdinalIgnoreCase);
-		if (isAiQuotaTheme && ReadAiSourceKind() != AiQuotaSourceKind.OpenAICodex)
-		{
-			return null;
-		}
-
 		return await ReadCodexTasksAsync(force: false, cancellationToken);
-	}
-
-	private MiMoTokenPlanWindow GetOrCreateMiMoWindow()
-	{
-		if (_miMoWindow != null)
-		{
-			return _miMoWindow;
-		}
-		_miMoWindow = new MiMoTokenPlanWindow
-		{
-			Owner = this
-		};
-		_miMoWindow.SnapshotUpdated += delegate(object? _, AiQuotaSnapshot snapshot)
-		{
-			Dispatcher.BeginInvoke((Action)delegate
-			{
-				UpdateAiQuotaUsage(snapshot);
-				ScheduleAutoCommit();
-			});
-		};
-		return _miMoWindow;
 	}
 
 	private async Task<AiQuotaSnapshot> ReadCodexQuotaAsync(bool force, CancellationToken cancellationToken = default)
 	{
 		if (!force && _latestAiQuota is { Available: true } cached && DateTimeOffset.UtcNow < _nextCodexQuotaReadAt)
 		{
+			_lastCodexQuotaDuration = TimeSpan.Zero;
+			_lastCodexQuotaError = null;
 			return ApplyAiDisplayName(cached);
 		}
 
 		AiSourceStatusText.Text = "正在读取 Codex 额度…";
+		var stopwatch = Stopwatch.StartNew();
 		try
 		{
 			AiQuotaSnapshot snapshot = await _codexQuotaSource.ReadAsync(cancellationToken);
+			stopwatch.Stop();
+			_lastCodexQuotaDuration = stopwatch.Elapsed;
+			_lastCodexQuotaError = null;
 			_nextCodexQuotaReadAt = DateTimeOffset.UtcNow.AddSeconds(30);
 			return UpdateAiQuotaUsage(snapshot);
 		}
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		{
+			throw;
+		}
 		catch (Exception ex)
 		{
+			stopwatch.Stop();
+			_lastCodexQuotaDuration = stopwatch.Elapsed;
+			_lastCodexQuotaError = ex.Message;
 			_nextCodexQuotaReadAt = DateTimeOffset.UtcNow.AddSeconds(10);
 			AiSourceStatusText.Text = ex.Message;
 			AiSourceStatusText.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 74, 84));
@@ -697,18 +738,31 @@ public partial class MainWindow : Window
 	{
 		if (!force && _latestCodexTasks is not null && DateTimeOffset.UtcNow < _nextCodexTaskReadAt)
 		{
+			_lastCodexTaskDuration = TimeSpan.Zero;
+			_lastCodexTaskError = null;
 			return _latestCodexTasks;
 		}
 
+		var stopwatch = Stopwatch.StartNew();
 		try
 		{
 			CodexTaskSnapshot snapshot = await _codexTaskSource.ReadAsync(cancellationToken);
+			stopwatch.Stop();
+			_lastCodexTaskDuration = stopwatch.Elapsed;
+			_lastCodexTaskError = null;
 			_latestCodexTasks = snapshot;
 			_nextCodexTaskReadAt = DateTimeOffset.UtcNow.AddSeconds(12);
 			return snapshot;
 		}
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		{
+			throw;
+		}
 		catch (Exception ex)
 		{
+			stopwatch.Stop();
+			_lastCodexTaskDuration = stopwatch.Elapsed;
+			_lastCodexTaskError = ex.Message;
 			_nextCodexTaskReadAt = DateTimeOffset.UtcNow.AddSeconds(12);
 			return _latestCodexTasks ?? CodexTaskSnapshot.Unavailable(DateTimeOffset.UtcNow, ex.Message);
 		}
@@ -718,18 +772,18 @@ public partial class MainWindow : Window
 	{
 		snapshot = ApplyAiDisplayName(snapshot);
 		_latestAiQuota = snapshot;
-		MiMoRemainingValueText.Text = $"{snapshot.ClampedRemainingPercent:0}%";
-		MiMoRemainingProgress.Value = snapshot.ClampedRemainingPercent;
+		CodexRemainingValueText.Text = $"{snapshot.ClampedRemainingPercent:0}%";
+		CodexRemainingProgress.Value = snapshot.ClampedRemainingPercent;
 		AiQuotaBalance? balance = snapshot.Balance;
 		if (balance is not null)
 		{
-			MiMoCreditsValueText.Text = FormatCompactNumber(balance.Used) + " / " + FormatCompactNumber(balance.Limit);
+			CodexCreditsValueText.Text = FormatCompactNumber(balance.Used) + " / " + FormatCompactNumber(balance.Limit);
 		}
 		else if (snapshot.Available)
 		{
-			MiMoCreditsValueText.Text = $"{100d - snapshot.ClampedRemainingPercent:0}% 已使用";
+			CodexCreditsValueText.Text = $"{100d - snapshot.ClampedRemainingPercent:0}% 已使用";
 		}
-		MiMoExpiryValueText.Text = snapshot.ResetsAt?.ToLocalTime().ToString("yyyy年M月d日") ?? "—";
+		CodexExpiryValueText.Text = snapshot.ResetsAt?.ToLocalTime().ToString("yyyy年M月d日") ?? "—";
 		AiSourceStatusText.Text = "已连接 · " + snapshot.PlatformName;
 		AiSourceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("SecondaryText");
 		return snapshot;
@@ -745,59 +799,17 @@ public partial class MainWindow : Window
 
 	private string ReadAiDisplayName()
 	{
-		if (!string.IsNullOrWhiteSpace(AiDisplayNameTextBox.Text))
-		{
-			return AiDisplayNameTextBox.Text.Trim();
-		}
-		return GetDefaultAiDisplayName(ReadAiSourceKind());
-	}
-
-	private AiQuotaSourceKind ReadAiSourceKind() =>
-		ReadComboTag(AiSourceComboBox, "MiMo") == "Codex"
-			? AiQuotaSourceKind.OpenAICodex
-			: AiQuotaSourceKind.XiaomiMiMoTokenPlanChina;
-
-	private static string GetDefaultAiDisplayName(AiQuotaSourceKind sourceKind) =>
-		sourceKind == AiQuotaSourceKind.OpenAICodex ? "Codex" : "MiMo";
-
-	private void AiSourceComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
-	{
-		if (_updatingSettingsPage)
-		{
-			return;
-		}
-
-		AiQuotaSourceKind sourceKind = ReadAiSourceKind();
-		if (string.IsNullOrWhiteSpace(AiDisplayNameTextBox.Text) ||
-			AiDisplayNameTextBox.Text.Trim() is "MiMo" or "Codex")
-		{
-			AiDisplayNameTextBox.Text = GetDefaultAiDisplayName(sourceKind);
-		}
-		_latestAiQuota = null;
-		_latestCodexTasks = null;
-		_nextCodexQuotaReadAt = DateTimeOffset.MinValue;
-		_nextCodexTaskReadAt = DateTimeOffset.MinValue;
-		ResetAiQuotaDisplay();
-		UpdateAiSourceUi();
-		ScheduleAutoCommit();
-	}
-
-	private void UpdateAiSourceUi()
-	{
-		bool isCodex = ReadAiSourceKind() == AiQuotaSourceKind.OpenAICodex;
-		MiMoActionsPanel.Visibility = isCodex ? Visibility.Collapsed : Visibility.Visible;
-		CodexActionsPanel.Visibility = isCodex ? Visibility.Visible : Visibility.Collapsed;
-		AiSourceDescriptionText.Text = isCodex
-			? "通过本机 Codex App Server 读取当前 ChatGPT Codex 额度窗口与下次重置时间。身份认证仍由 Codex 管理，本应用不会读取、复制或导出 auth.json。"
-			: "China · 读取订阅套餐的真实 Credits，用量信息仅保存在本机。";
+		return string.IsNullOrWhiteSpace(_settings.AiQuota?.DisplayName)
+			? "Codex"
+			: _settings.AiQuota.DisplayName.Trim();
 	}
 
 	private void ResetAiQuotaDisplay()
 	{
-		MiMoRemainingValueText.Text = "—";
-		MiMoCreditsValueText.Text = "—";
-		MiMoExpiryValueText.Text = "—";
-		MiMoRemainingProgress.Value = 0;
+		CodexRemainingValueText.Text = "—";
+		CodexCreditsValueText.Text = "—";
+		CodexExpiryValueText.Text = "—";
+		CodexRemainingProgress.Value = 0;
 	}
 
 	private string ReadWeatherLocation()
@@ -822,42 +834,6 @@ public partial class MainWindow : Window
 			return $"{value / 1000m:0.##}K";
 		}
 		return $"{value:0}";
-	}
-
-	private async void MiMoLoginButton_OnClick(object sender, RoutedEventArgs e)
-	{
-		await ShowOneTimeFeatureNoticeAsync("ai-quota");
-		MiMoTokenPlanWindow window = GetOrCreateMiMoWindow();
-		window.Show();
-		window.Activate();
-		try
-		{
-			await window.InitializeAsync();
-		}
-		catch (Exception ex)
-		{
-			AiSourceStatusText.Text = "登录窗口启动失败：" + ex.Message;
-		}
-	}
-
-	private async void MiMoRefreshButton_OnClick(object sender, RoutedEventArgs e)
-	{
-		if (_miMoWindow == null)
-		{
-			MiMoLoginButton_OnClick(sender, e);
-			return;
-		}
-		AiSourceStatusText.Text = "正在读取 MiMo 用量…";
-		try
-		{
-			UpdateAiQuotaUsage(await _miMoWindow.ReadAsync(force: true));
-			await CommitAndPushAsync();
-		}
-		catch (Exception ex)
-		{
-			AiSourceStatusText.Text = ex.Message;
-			AiSourceStatusText.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 74, 84));
-		}
 	}
 
 	private async Task PushLatestAsync(bool force = false)
@@ -1043,13 +1019,9 @@ public partial class MainWindow : Window
 	private async Task ShowOneTimeFeatureNoticeAsync(string themeId)
 	{
 		FeatureNoticeWindow? notice = null;
-		if (themeId == "ai-quota" && ReadAiSourceKind() == AiQuotaSourceKind.OpenAICodex && !_settings.HasAcknowledgedCodexNotice)
+		if (themeId == "ai-quota" && !_settings.HasAcknowledgedCodexNotice)
 		{
 			notice = FeatureNoticeWindow.CreateCodexNotice();
-		}
-		else if (themeId == "ai-quota" && !_settings.HasAcknowledgedMiMoNotice)
-		{
-			notice = FeatureNoticeWindow.CreateMiMoNotice();
 		}
 
 		if (notice is null)
@@ -1059,14 +1031,7 @@ public partial class MainWindow : Window
 
 		notice.Owner = this;
 		notice.ShowDialog();
-		if (ReadAiSourceKind() == AiQuotaSourceKind.OpenAICodex)
-		{
-			_settings.HasAcknowledgedCodexNotice = true;
-		}
-		else
-		{
-			_settings.HasAcknowledgedMiMoNotice = true;
-		}
+		_settings.HasAcknowledgedCodexNotice = true;
 		await _settingsStore.SaveAsync(_settings);
 	}
 
@@ -1109,6 +1074,7 @@ public partial class MainWindow : Window
 			FrameworkElement frameworkElement = viewModel.CurrentPage switch
 			{
 				ShellPage.Screen => ScreenPanel,
+				ShellPage.DataServices => DataServicesPanel,
 				ShellPage.Appearance => ThemePanel,
 				ShellPage.Automation => AutomationPanel,
 				ShellPage.Settings => SettingsPanel,
@@ -1282,6 +1248,92 @@ public partial class MainWindow : Window
 		if (sourceAppId.Contains("chrome", StringComparison.OrdinalIgnoreCase)) return "Chrome";
 		if (sourceAppId.Contains("msedge", StringComparison.OrdinalIgnoreCase)) return "Edge";
 		return "Windows 媒体";
+	}
+
+	private void UpdateMusicDataServiceStatus(MusicSnapshot music)
+	{
+		if (!music.Available)
+		{
+			_dataServicesViewModel.Music.Set(
+				DataLoadState.Empty,
+				"没有正在播放的音乐",
+				"已检测 Windows 媒体会话；打开网易云并开始播放后会自动出现");
+			return;
+		}
+
+		string source = ResolveMusicSourceName(music.SourceAppId);
+		string lyricDetail = music.Lyrics.Available ? "同步歌词正常" : "媒体位置正常 · 暂无同步歌词";
+		_dataServicesViewModel.Music.Set(
+			DataLoadState.Ready,
+			$"{source} · {(music.IsPlaying ? "正在播放" : "已暂停")}",
+			$"{music.Title} — {music.Artist} · {lyricDetail}");
+	}
+
+	private void UpdateCodexDataServiceStatus()
+	{
+		AiQuotaSnapshot? quota = _latestAiQuota;
+		CodexTaskSnapshot? tasks = _latestCodexTasks;
+		TimeSpan? duration = MaxDuration(_lastCodexQuotaDuration, _lastCodexTaskDuration);
+		if (quota is { Available: true })
+		{
+			int taskCount = tasks?.GetDisplayTasks(4).Count ?? 0;
+			bool stale = _lastCodexQuotaError is not null || _lastCodexTaskError is not null;
+			_dataServicesViewModel.Codex.Set(
+				stale ? DataLoadState.Stale : DataLoadState.Ready,
+				$"可用 {quota.ClampedRemainingPercent:0}% · {taskCount} 条任务",
+				stale
+					? $"保留上次数据 · {_lastCodexQuotaError ?? _lastCodexTaskError}"
+					: "额度与任务读取成功",
+				duration);
+			return;
+		}
+
+		string? error = _lastCodexQuotaError ?? _lastCodexTaskError ?? tasks?.ErrorMessage;
+		_dataServicesViewModel.Codex.Set(
+			error is null ? DataLoadState.Empty : DataLoadState.Error,
+			"尚未获得 Codex 数据",
+			error ?? "选择 Codex 数据源并确认本机已经登录",
+			duration);
+	}
+
+	private void UpdateWeatherDataServiceStatus(
+		WeatherSnapshot? weather,
+		AutomaticWeatherLocationResult? location,
+		bool weatherWasRequested)
+	{
+		location ??= _lastWeatherLocationResult;
+		if (location is null && !weatherWasRequested)
+		{
+			return;
+		}
+
+		DataLoadState state = location?.State ?? (weather is { Available: true } ? DataLoadState.Ready : DataLoadState.Empty);
+		if (weather is { IsStale: true })
+		{
+			state = DataLoadState.Stale;
+		}
+		else if (weatherWasRequested && weather is { Available: false } && state == DataLoadState.Ready)
+		{
+			state = DataLoadState.Error;
+		}
+
+		string locationName = weather?.LocationName
+			?? location?.Location?.DisplayName
+			?? ReadWeatherLocation();
+		string source = _settings.Weather?.UseAutomaticLocation == true ? "Windows 自动定位" : "手动城市";
+		_dataServicesViewModel.Weather.Set(
+			state,
+			$"{source} · {locationName}",
+			weather is { Available: true }
+				? $"{weather.TemperatureC:0}° · {weather.ConditionText} · {location?.Message ?? "天气读取成功"}"
+				: location?.Message ?? weather?.ErrorMessage ?? "等待天气数据");
+	}
+
+	private static TimeSpan? MaxDuration(TimeSpan? left, TimeSpan? right)
+	{
+		if (left is null) return right;
+		if (right is null) return left;
+		return left > right ? left : right;
 	}
 
 }

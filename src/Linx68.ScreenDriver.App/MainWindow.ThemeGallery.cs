@@ -82,7 +82,7 @@ public partial class MainWindow
 
 	private void UpdateThemeGalleryCardWidth()
 	{
-		double galleryWidth = ThemeScrollViewer.ViewportWidth - 158;
+		double galleryWidth = ThemeScrollViewer.ViewportWidth;
 		if (galleryWidth <= 0)
 		{
 			return;

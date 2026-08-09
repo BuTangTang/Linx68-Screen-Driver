@@ -6,6 +6,7 @@ namespace Linx68.ScreenDriver.App.ViewModels;
 public enum ShellPage
 {
     Screen,
+    DataServices,
     Appearance,
     Automation,
     Settings,
@@ -27,6 +28,8 @@ public partial class ShellViewModel : ObservableObject
 
     public AppearanceViewModel Appearance { get; } = new();
 
+    public DataServicesViewModel DataServices { get; } = new();
+
     public AutomationViewModel Automation { get; } = new();
 
     public SettingsViewModel Settings { get; } = new();
@@ -35,6 +38,8 @@ public partial class ShellViewModel : ObservableObject
     private ShellPage currentPage = ShellPage.Screen;
 
     public bool IsScreenPage => CurrentPage == ShellPage.Screen;
+
+    public bool IsDataServicesPage => CurrentPage == ShellPage.DataServices;
 
     public bool IsAppearancePage => CurrentPage == ShellPage.Appearance;
 
@@ -47,6 +52,7 @@ public partial class ShellViewModel : ObservableObject
     public string PageTitle => CurrentPage switch
     {
         ShellPage.Screen => "显示方案",
+        ShellPage.DataServices => "数据服务",
         ShellPage.Appearance => "外观",
         ShellPage.Automation => "自动化",
         ShellPage.Settings => "其他设置",
@@ -57,6 +63,7 @@ public partial class ShellViewModel : ObservableObject
     public string PageSubtitle => CurrentPage switch
     {
         ShellPage.Screen => "选择要推送到 Linx68 屏幕的画面",
+        ShellPage.DataServices => "统一查看实时数据源、刷新状态和定位权限",
         ShellPage.Appearance => "调整应用外观与键盘屏幕的字体和强调色",
         ShellPage.Automation => "设置推送频率和封面歌词自动切换",
         ShellPage.Settings => "设备地址、安全区和启动行为",
@@ -76,6 +83,7 @@ public partial class ShellViewModel : ObservableObject
     partial void OnCurrentPageChanged(ShellPage value)
     {
         OnPropertyChanged(nameof(IsScreenPage));
+        OnPropertyChanged(nameof(IsDataServicesPage));
         OnPropertyChanged(nameof(IsAppearancePage));
         OnPropertyChanged(nameof(IsAutomationPage));
         OnPropertyChanged(nameof(IsSettingsPage));

@@ -21,7 +21,32 @@ public sealed class DashboardSnapshotBuilder(
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(music);
 
-        SystemSnapshot system = await systemSource.ReadAsync(cancellationToken);
+        Task<SystemSnapshot> systemTask = systemSource.ReadAsync(cancellationToken).AsTask();
+        Task<MusicSnapshot> musicTask = BuildMusicAsync(theme, settings, music, cancellationToken);
+        Task<WeatherSnapshot?> weatherTask = theme.Requires(ThemeDataRequirements.Weather)
+            && effectiveWeatherSettings is not null
+                ? ReadWeatherAsync(effectiveWeatherSettings, cancellationToken)
+                : Task.FromResult<WeatherSnapshot?>(null);
+
+        await Task.WhenAll(systemTask, musicTask, weatherTask);
+        SystemSnapshot system = await systemTask;
+        MusicSnapshot effectiveMusic = await musicTask;
+        WeatherSnapshot? weather = await weatherTask;
+        return system with
+        {
+            Music = effectiveMusic,
+            AiQuota = aiQuota,
+            Weather = weather,
+            CodexTasks = codexTasks
+        };
+    }
+
+    private async Task<MusicSnapshot> BuildMusicAsync(
+        ThemeDefinition theme,
+        AppSettings settings,
+        MusicSnapshot music,
+        CancellationToken cancellationToken)
+    {
         MusicSnapshot effectiveMusic = music;
         if (theme.Requires(ThemeDataRequirements.Music) && music.Available && musicEnricher is not null)
         {
@@ -37,16 +62,11 @@ public sealed class DashboardSnapshotBuilder(
             };
         }
 
-        WeatherSnapshot? weather = theme.Requires(ThemeDataRequirements.Weather)
-            && effectiveWeatherSettings is not null
-                ? await weatherSource.ReadAsync(effectiveWeatherSettings, cancellationToken)
-                : null;
-        return system with
-        {
-            Music = effectiveMusic,
-            AiQuota = aiQuota,
-            Weather = weather,
-            CodexTasks = codexTasks
-        };
+        return effectiveMusic;
     }
+
+    private async Task<WeatherSnapshot?> ReadWeatherAsync(
+        WeatherSettings settings,
+        CancellationToken cancellationToken) =>
+        await weatherSource.ReadAsync(settings, cancellationToken);
 }

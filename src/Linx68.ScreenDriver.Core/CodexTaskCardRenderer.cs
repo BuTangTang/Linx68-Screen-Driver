@@ -54,7 +54,7 @@ internal static class CodexTaskCardRenderer
             40,
             15);
 
-        Color titleColor = status is CodexTaskStatus.Unavailable or CodexTaskStatus.Empty
+        Color titleColor = status is CodexTaskStatus.Loading or CodexTaskStatus.Unavailable or CodexTaskStatus.Empty
             ? SecondaryText
             : Colors.White;
         if (useTwoLineTitle)
@@ -100,13 +100,14 @@ internal static class CodexTaskCardRenderer
         CodexTaskStatus.WaitingForApproval => "需要确认",
         CodexTaskStatus.Active => "运行中",
         CodexTaskStatus.Completed => "完成了",
+        CodexTaskStatus.Loading => "正在读取",
         CodexTaskStatus.Unavailable => "任务状态",
         _ => "暂无任务"
     };
 
     internal static string GetDetail(CodexTaskItem task, CodexTaskStatus status)
     {
-        if (status is CodexTaskStatus.Unavailable or CodexTaskStatus.Empty || task.UpdatedAt == DateTimeOffset.MinValue)
+        if (status is CodexTaskStatus.Loading or CodexTaskStatus.Unavailable or CodexTaskStatus.Empty || task.UpdatedAt == DateTimeOffset.MinValue)
         {
             return string.Empty;
         }

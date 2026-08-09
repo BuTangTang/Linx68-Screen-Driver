@@ -1,0 +1,4 @@
+interface:
+  display_name: "灵犀68实时数据质量"
+  short_description: "约束实时数据加载状态、刷新性能、歌词同步和天气定位验收流程"
+  default_prompt: "Use $linx68-realtime-data-quality to review and validate this real-time data feature before implementation."

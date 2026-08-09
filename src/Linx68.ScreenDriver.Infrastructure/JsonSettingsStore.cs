@@ -134,7 +134,7 @@ public sealed class JsonSettingsStore : ISettingsStore
 
 	private static AppSettings Normalize(AppSettings settings)
 	{
-		bool migrateAiQuotaToCodex = settings.SettingsVersion < 4;
+		bool migrateLegacyQuotaSettings = settings.SettingsVersion < 10;
 		bool migrateRemovedMusicThemes = settings.SettingsVersion < 5;
 		bool enableOnlineLyrics = settings.SettingsVersion < 7;
 		settings.SettingsVersion = AppSettings.CurrentSettingsVersion;
@@ -149,18 +149,9 @@ public sealed class JsonSettingsStore : ISettingsStore
 			settings.Music.EnableOnlineLyrics = true;
 		}
 		settings.AiQuota ??= new AiQuotaSettings();
-		if (!Enum.IsDefined(settings.AiQuota.SourceKind))
+		if (migrateLegacyQuotaSettings || string.IsNullOrWhiteSpace(settings.AiQuota.DisplayName))
 		{
-			settings.AiQuota.SourceKind = AiQuotaSourceKind.OpenAICodex;
-		}
-		if (migrateAiQuotaToCodex)
-		{
-			settings.AiQuota.SourceKind = AiQuotaSourceKind.OpenAICodex;
-			if (string.IsNullOrWhiteSpace(settings.AiQuota.DisplayName) ||
-				string.Equals(settings.AiQuota.DisplayName, "MiMo", StringComparison.OrdinalIgnoreCase))
-			{
-				settings.AiQuota.DisplayName = "Codex";
-			}
+			settings.AiQuota.DisplayName = "Codex";
 		}
 		if (migrateRemovedMusicThemes)
 		{

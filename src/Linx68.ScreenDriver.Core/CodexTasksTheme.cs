@@ -13,7 +13,7 @@ public sealed class CodexTasksTheme : IScreenTheme
     public void Draw(ScreenCanvas canvas, SystemSnapshot snapshot)
     {
         Rect safe = canvas.SafeBounds;
-        CodexTaskSnapshot tasks = snapshot.CodexTasks ?? CodexTaskSnapshot.Unavailable(snapshot.Timestamp);
+        CodexTaskSnapshot tasks = snapshot.CodexTasks ?? CodexTaskSnapshot.Loading(snapshot.Timestamp);
         IReadOnlyList<CodexTaskItem> displayTasks = tasks.GetDisplayTasks(4);
 
         canvas.Gradient(Color.FromRgb(12, 18, 31), Color.FromRgb(8, 26, 35), new Point(0, 0), new Point(1, 1));
@@ -35,9 +35,13 @@ public sealed class CodexTasksTheme : IScreenTheme
         {
             var card = new Rect(safe.Left, firstCardTop + index * (cardHeight + cardGap), safe.Width, cardHeight);
             CodexTaskItem? task = CodexTaskCardRenderer.GetTask(displayTasks, index);
-            if (!tasks.Available)
+            if (!tasks.Available && tasks.ErrorMessage is not null)
             {
                 task = new CodexTaskItem("任务状态暂不可用", CodexTaskStatus.Unavailable, DateTimeOffset.MinValue);
+            }
+            else if (!tasks.Available)
+            {
+                task = new CodexTaskItem("正在获取 Codex 任务", CodexTaskStatus.Loading, DateTimeOffset.MinValue);
             }
 
             CodexTaskCardRenderer.Draw(canvas, card, task);

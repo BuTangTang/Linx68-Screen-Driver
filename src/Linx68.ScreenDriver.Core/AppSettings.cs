@@ -9,7 +9,7 @@ public enum AppearanceMode
 
 public sealed class AppSettings
 {
-	public const int CurrentSettingsVersion = 9;
+	public const int CurrentSettingsVersion = 10;
 
 	public int SettingsVersion { get; set; } = CurrentSettingsVersion;
 
@@ -45,8 +45,6 @@ public sealed class AppSettings
 	public bool LaunchAtStartup { get; set; }
 
 	public bool HasCompletedOnboarding { get; set; }
-
-	public bool HasAcknowledgedMiMoNotice { get; set; }
 
 	public bool HasAcknowledgedCodexNotice { get; set; }
 

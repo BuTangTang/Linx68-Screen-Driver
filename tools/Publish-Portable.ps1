@@ -76,8 +76,6 @@ try {
         'PRIVACY.md',
         'THIRD-PARTY-NOTICES.md',
         'Licenses\Doto-OFL.txt',
-        'Licenses\WebView2-LICENSE.txt',
-        'Licenses\WebView2-NOTICE.txt',
         'Licenses\dotnet-LICENSE.txt',
         'Licenses\dotnet-ThirdPartyNotices.txt'
     )) {

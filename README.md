@@ -75,20 +75,20 @@ dotnet list Linx68.ScreenDriver.sln package --vulnerable --include-transitive
 powershell -ExecutionPolicy Bypass -File tools/Publish-Portable.ps1
 ```
 
-打包脚本只从源码构建，并排除设置、WebView2 登录资料、用户字体、PDB 和 XML 调试文件。输出位于被 Git 忽略的 `artifacts` 目录，脚本不会自动上传或发布任何内容。
+打包脚本只从源码构建，并排除设置、用户字体、PDB 和 XML 调试文件。输出位于被 Git 忽略的 `artifacts` 目录，脚本不会自动上传或发布任何内容。
 
 ## 隐私与实验功能
 
 应用不包含第一方分析或遥测。只有启用对应功能时，才会直接联系相关服务：
 
 - 天气查询发送至 Open-Meteo；自动定位时，坐标还会发送至 BigDataCloud 以解析城市名。
-- Codex 额度与任务列表通过本机 Codex App Server 读取；任务状态还会只读检查对应本地任务日志的最后写入时间和开始/完成事件类型，以识别另一个 Codex 桌面进程中的活动任务。应用不提取对话正文、代码、命令输出，也不会读取或导出登录凭据。MiMo 仅作为可手动切换的旧数据源。
+- Codex 额度与任务列表通过本机 Codex App Server 读取；任务状态还会只读检查对应本地任务日志的最后写入时间和开始/完成事件类型，以识别另一个 Codex 桌面进程中的活动任务。应用不提取对话正文、代码、命令输出，也不会读取或导出登录凭据。
 - 在线歌词默认关闭；启用后会将当前曲名、歌手和时长发送至 LRCLIB，并缓存匹配结果以减少请求。
 - JPEG 画面只从电脑发送到用户配置的局域网设备地址。
 
 本项目目前为个人非商业项目，使用 Open-Meteo 免费非商业接口。MIT 许可证允许他人修改和商业使用源码，但商业再使用者必须自行确认并取得第三方数据服务所要求的许可。
 
-不要提交或分享本机使用中的 `Data`、`settings.json`、`MiMoWebView2`、`dist` 或 `artifacts` 目录。详细说明见 [PRIVACY.md](PRIVACY.md) 和 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+不要提交或分享本机使用中的 `Data`、`settings.json`、`dist` 或 `artifacts` 目录。详细说明见 [PRIVACY.md](PRIVACY.md) 和 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
 
 ## 字体与视觉资产
 
@@ -116,6 +116,6 @@ showcase                               主题展示图片
 
 灵犀68屏幕驱动基于 ZCat95 的 Keyboard Screen Studio 修改，源代码采用 [MIT License](LICENSE)。原始作品版权归 ZCat95，修改部分版权归 butang。第三方组件、字体和数据服务继续遵循各自条款。
 
-灵犀68屏幕驱动是独立的非官方项目，与 Linx68 品牌、设备制造商、Microsoft、BigDataCloud、Open-Meteo、Xiaomi、Nothing 或 Apple 不存在隶属、授权、认可或赞助关系。所有产品名称和商标归其各自权利人所有。
+灵犀68屏幕驱动是独立的非官方项目，与 Linx68 品牌、设备制造商、Microsoft、BigDataCloud、Open-Meteo、Nothing 或 Apple 不存在隶属、授权、认可或赞助关系。所有产品名称和商标归其各自权利人所有。
 
 欢迎通过 Issue 反馈问题或提出主题建议。提交代码前，请先运行项目中的两组自动化测试。

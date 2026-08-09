@@ -11,23 +11,14 @@ preferences on the local computer. Portable builds store settings under
 Optional online features contact third-party services directly:
 
 - When automatic weather location is enabled, the app asks the Windows location service for an approximate position. The current coordinates are sent directly from the app to BigDataCloud to resolve the city name and to Open-Meteo for the weather request; coordinates are not saved in `settings.json`. When automatic location is disabled or unavailable, only the configured city query is sent to Open-Meteo.
-- Xiaomi MiMo quota information is read inside a WebView2 session after the
-  user signs in to Xiaomi's website. This integration is experimental and is
-  not an official Xiaomi integration. The platform may change or restrict this access at any time.
 - Codex quota and task summaries are read locally through the signed-in Codex App Server. To detect a task that is active in another Codex desktop process, the application checks the matching local rollout file's last-write time and its `task_started` / `task_complete` event types. When an `update_plan` record exists, it counts only the plan-item status values needed for `completed/total` progress and discards the step text. It does not display conversation text, code, command output, authentication files, or login tokens, and this local task metadata is not sent to the project author or any third-party service.
 - Online synchronized lyrics are disabled by default. When enabled for a dynamic music theme, the current track title, artist, and duration are sent directly to LRCLIB. For a NetEase Cloud Music media session, the track title is also sent to NetEase Cloud Music to resolve the canonical track metadata and obtain its timed lyrics. Matching metadata and lyrics are cached in memory for the current application session and are not written to the settings file.
-
-WebView2 sign-in state, including cookies and browser storage, is saved locally
-under `Data/MiMoWebView2` in portable mode or under the application's local
-application-data directory in installed/development mode. Do not share or
-publish that folder. Delete it while the application is closed to remove the
-locally saved Xiaomi sign-in state.
 
 Images sent to the keyboard are posted directly from the computer to the
 configured device address over unencrypted HTTP. Use this feature only on a
 trusted local network.
 
 The application does not intentionally transmit settings, media information,
-system metrics, local image paths, or Xiaomi credentials to the project author.
+system metrics, local image paths, or Codex credentials to the project author.
 Third-party services process requests according to their own privacy policies
 and terms.

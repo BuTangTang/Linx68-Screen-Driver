@@ -20,16 +20,6 @@ public partial class FeatureNoticeWindow : Window
         DetailsList.ItemsSource = details;
     }
 
-    public static FeatureNoticeWindow CreateMiMoNotice() => new(
-        "MiMo 用量说明",
-        "使用前，请了解非官方集成方式",
-        "额度主题读取你在 Xiaomi MiMo 控制台中的登录会话与套餐数据，不属于小米官方集成。",
-        [
-            "登录状态仅保存在本机 WebView2 数据目录",
-            "平台页面或接口变化可能导致功能失效",
-            "请勿在公共电脑登录，并自行留意账号与平台规则"
-        ]);
-
     public static FeatureNoticeWindow CreateCodexNotice() => new(
         "Codex 额度说明",
         "显示当前 ChatGPT Codex 额度窗口",
