@@ -94,6 +94,11 @@ public sealed partial class ScreenViewModel : ObservableObject
 
     public void SetThemes(IEnumerable<ThemeCardViewModel> themes, string? selectedThemeId)
     {
+        string? browsedCategoryId = _allThemes.Count == 0
+            ? null
+            : IsAllCategorySelected
+                ? "all"
+                : ThemeGroups.FirstOrDefault(group => group.IsSelected)?.Id;
         foreach (ThemeCardViewModel theme in _allThemes)
         {
             theme.PropertyChanged -= Theme_OnPropertyChanged;
@@ -108,7 +113,13 @@ public sealed partial class ScreenViewModel : ObservableObject
 
         RefreshThemeGroups();
         SelectTheme(selectedThemeId, notify: false);
-        SelectCategory(SelectedTheme?.Definition.CategoryId ?? "all");
+        bool canPreserveBrowsedCategory = string.Equals(browsedCategoryId, "all", StringComparison.OrdinalIgnoreCase)
+            || ThemeGroups.Any(group =>
+                string.Equals(group.Id, browsedCategoryId, StringComparison.OrdinalIgnoreCase)
+                && group.Themes.Count > 0);
+        SelectCategory(canPreserveBrowsedCategory
+            ? browsedCategoryId!
+            : SelectedTheme?.Definition.CategoryId ?? "all");
     }
 
     public void SelectTheme(string? themeId, bool notify)

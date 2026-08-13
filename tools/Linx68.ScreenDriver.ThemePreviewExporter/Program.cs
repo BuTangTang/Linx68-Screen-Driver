@@ -171,7 +171,9 @@ static BitmapSource RenderCard(string title, BitmapSource screen, FontFamily fon
 
 static BitmapSource RenderContactSheet(IReadOnlyList<(IScreenTheme Theme, BitmapSource Image)> cards)
 {
-    const int columns = 7;
+	// Fifteen current themes form a balanced 5x3 wall instead of leaving a single
+	// orphan card on a third row.
+	const int columns = 5;
     const int cardWidth = 236;
     const int cardHeight = 536;
     const int gap = 16;

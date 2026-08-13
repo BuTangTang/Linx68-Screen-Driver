@@ -1,0 +1,27 @@
+{
+  "SettingsVersion": 10,
+  "DeviceEndpoint": "",
+  "SelectedThemeId": "system",
+  "AutoPush": false,
+  "RefreshSeconds": 5,
+  "AccentColor": "#E4694C",
+  "SelectedFontId": "builtin:segoe-variable-display",
+  "SafeArea": {
+    "Left": 10,
+    "Top": 52,
+    "Right": 10,
+    "Bottom": 12
+  },
+  "AiQuota": {
+    "DisplayName": "Codex"
+  },
+  "Music": {
+    "EnableOnlineLyrics": true,
+    "LyricOffsetSeconds": 0
+  },
+  "Weather": {
+    "LocationQuery": "北海",
+    "UseAutomaticLocation": false
+  },
+  "ScreenColorMode": 0
+}

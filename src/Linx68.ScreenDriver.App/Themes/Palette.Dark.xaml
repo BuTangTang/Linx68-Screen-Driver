@@ -11,6 +11,11 @@
     <SolidColorBrush x:Key="SecondaryText" po:Freeze="False" Color="#9AA1A8" />
     <SolidColorBrush x:Key="DisabledText" po:Freeze="False" Color="#62686E" />
     <SolidColorBrush x:Key="Surface.Window" po:Freeze="False" Color="#151719" />
+	<LinearGradientBrush x:Key="WindowAmbientBrush" po:Freeze="False" StartPoint="0,0" EndPoint="1,1">
+		<GradientStop Color="#171A1C" Offset="0" />
+		<GradientStop Color="#151719" Offset="0.62" />
+		<GradientStop Color="#211815" Offset="1" />
+	</LinearGradientBrush>
     <SolidColorBrush x:Key="Surface.Sidebar" po:Freeze="False" Color="#0C0D0E" />
     <SolidColorBrush x:Key="Surface.Card" po:Freeze="False" Color="#1A1D20" />
     <SolidColorBrush x:Key="Surface.Control" po:Freeze="False" Color="#17191C" />
@@ -23,7 +28,11 @@
     <SolidColorBrush x:Key="Stroke.Strong" po:Freeze="False" Color="#464C53" />
     <SolidColorBrush x:Key="HairlineBrush" po:Freeze="False" Color="#25292D" />
     <SolidColorBrush x:Key="DangerBrush" po:Freeze="False" Color="#E76565" />
+    <SolidColorBrush x:Key="DangerSoftBrush" po:Freeze="False" Color="#3A2023" />
     <SolidColorBrush x:Key="SuccessBrush" po:Freeze="False" Color="#4CC38A" />
+    <SolidColorBrush x:Key="SuccessSoftBrush" po:Freeze="False" Color="#153126" />
+    <SolidColorBrush x:Key="WarningBrush" po:Freeze="False" Color="#F0AD4E" />
+    <SolidColorBrush x:Key="WarningSoftBrush" po:Freeze="False" Color="#382B18" />
     <SolidColorBrush x:Key="TitleBarForeground" po:Freeze="False" Color="#E6E8EA" />
     <SolidColorBrush x:Key="SwitchTrackBrush" po:Freeze="False" Color="#43484E" />
     <SolidColorBrush x:Key="ControlThumbBrush" po:Freeze="False" Color="#F4F5F6" />

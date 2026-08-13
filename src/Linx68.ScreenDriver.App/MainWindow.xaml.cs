@@ -130,6 +130,10 @@ public partial class MainWindow : Window
 
 	private bool _automaticLocationFallback;
 
+	private bool _weatherDataServiceRefreshPending;
+
+	private long _weatherSettingsVersion;
+
 	private string? _lastEffectiveThemeId;
 
 	private WindowState _restoreWindowState;
@@ -141,6 +145,10 @@ public partial class MainWindow : Window
 	private CancellationTokenSource? _refreshCancellation;
 
 	private long _refreshVersion;
+
+	private CancellationTokenSource? _dataServicesRefreshCancellation;
+
+	private long _dataServicesRefreshVersion;
 
 	private TimeSpan _lastRefreshDuration;
 
@@ -309,11 +317,13 @@ public partial class MainWindow : Window
 		System.Windows.Application.Current.SessionEnding += Application_OnSessionEnding;
 		base.Closed += delegate
 		{
+			_loaded = false;
 			_timer.Stop();
 			_autoCommitTimer.Stop();
 			_refreshCancellation?.Cancel();
 			_refreshCancellation?.Dispose();
 			_refreshCancellation = null;
+			CancelDataServicesRefresh();
 			if (_ownsServices)
 			{
 				(_transport as IDisposable)?.Dispose();
@@ -493,6 +503,12 @@ public partial class MainWindow : Window
 		{
 			return;
 		}
+		if (preferCachedPreview)
+		{
+			// Theme identity and selection are already current. Render the latest compatible
+			// snapshot before entering the serialized save/refresh path so rapid clicks stay tactile.
+			TryRenderLatestSnapshot();
+		}
 		if (_autoCommitRunning)
 		{
 			_refreshCancellation?.Cancel();
@@ -503,19 +519,40 @@ public partial class MainWindow : Window
 		try
 		{
 			ApplyControlsToSettings();
-			await _settingsStore.SaveAsync(_settings);
-			if (preferCachedPreview)
+			bool refreshWeatherDataService = _weatherDataServiceRefreshPending;
+			_weatherDataServiceRefreshPending = false;
+			long commitWeatherVersion = Volatile.Read(ref _weatherSettingsVersion);
+			WeatherSettings committedWeatherSettings = new()
 			{
-				TryRenderLatestSnapshot();
+				LocationQuery = _settings.Weather?.LocationQuery ?? "北京",
+				UseAutomaticLocation = _settings.Weather?.UseAutomaticLocation == true
+			};
+			await _settingsStore.SaveAsync(_settings);
+			if (commitWeatherVersion != Volatile.Read(ref _weatherSettingsVersion))
+			{
+				// A newer weather edit arrived while the settings write was in flight.
+				// Let the queued commit own the preview instead of briefly rendering
+				// the older city or location mode.
+				return;
 			}
 			bool refreshed = await RefreshPreviewAsync();
+			if (refreshWeatherDataService
+				&& !_weatherDataServiceRefreshPending
+				&& commitWeatherVersion == Volatile.Read(ref _weatherSettingsVersion)
+				&& GetSelectedThemeDefinition()?.Requires(ThemeDataRequirements.Weather) != true)
+			{
+				await RefreshWeatherDataServiceAfterSettingsChangeAsync(
+					committedWeatherSettings,
+					commitWeatherVersion);
+			}
 			if (_themeGalleryPreviewDirty)
 			{
 				_themeGalleryPreviewDirty = false;
 				BuildThemeList();
 			}
 			_mediaAutomationThemeChanged = false;
-			if (refreshed)
+			if (refreshed
+				&& commitWeatherVersion == Volatile.Read(ref _weatherSettingsVersion))
 			{
 				await PushLatestAsync(force: true);
 			}
@@ -578,6 +615,7 @@ public partial class MainWindow : Window
 		long refreshVersion = Interlocked.Increment(ref _refreshVersion);
 		var stopwatch = Stopwatch.StartNew();
 		_busy = true;
+		ShowPreviewRefreshStarted();
 		_dataServicesViewModel.Music.BeginRefresh("保留上次媒体信息 · 正在检测 Windows 媒体会话");
 		if (_latestFrame is not null)
 		{
@@ -657,7 +695,8 @@ public partial class MainWindow : Window
 			stopwatch.Stop();
 			_lastRefreshDuration = refresh.Timings?.Total ?? stopwatch.Elapsed;
 			_lastRefreshCompletedAt = DateTimeOffset.Now;
-			_dataServicesViewModel.CompleteRefresh(_lastRefreshDuration, _lastRefreshCompletedAt.Value);
+			_dataServicesViewModel.UpdateOverallStatus();
+			ShowPreviewRefreshCompleted();
 			PreviewStatusText.Text = "本地预览";
 			return true;
 		}
@@ -671,6 +710,7 @@ public partial class MainWindow : Window
 			if (refreshVersion == Volatile.Read(ref _refreshVersion))
 			{
 				PreviewStatusText.Text = _latestFrame is null ? "预览失败" : "上次预览 · 刷新失败";
+				ShowPreviewRefreshFailed();
 			}
 			return false;
 		}
@@ -710,6 +750,7 @@ public partial class MainWindow : Window
 		try
 		{
 			AiQuotaSnapshot snapshot = await _codexQuotaSource.ReadAsync(cancellationToken);
+			cancellationToken.ThrowIfCancellationRequested();
 			stopwatch.Stop();
 			_lastCodexQuotaDuration = stopwatch.Elapsed;
 			_lastCodexQuotaError = null;
@@ -747,6 +788,7 @@ public partial class MainWindow : Window
 		try
 		{
 			CodexTaskSnapshot snapshot = await _codexTaskSource.ReadAsync(cancellationToken);
+			cancellationToken.ThrowIfCancellationRequested();
 			stopwatch.Stop();
 			_lastCodexTaskDuration = stopwatch.Elapsed;
 			_lastCodexTaskError = null;
@@ -854,16 +896,20 @@ public partial class MainWindow : Window
 		_pushing = true;
 		try
 		{
-			bool success = (await _pushService.PushAsync(_settingsViewModel.EndpointIp, _latestFrame)).Success;
-			SetDeviceStatus(success);
-			_nextDevicePushAt = success
+			DevicePushResult result = await _pushService.PushAsync(_settingsViewModel.EndpointIp, _latestFrame);
+			SetDeviceStatus(result);
+			_nextDevicePushAt = result.Success
 				? DateTimeOffset.MinValue
 				: DateTimeOffset.UtcNow.AddSeconds(5);
 		}
 		catch (Exception ex)
 		{
 			Trace.TraceWarning($"Failed to push display frame: {ex}");
-			SetDeviceStatus(success: false);
+			SetDeviceStatus(new DevicePushResult(
+				Success: false,
+				StatusCode: null,
+				Message: "设备推送失败",
+				Elapsed: TimeSpan.Zero));
 			_nextDevicePushAt = DateTimeOffset.UtcNow.AddSeconds(5);
 		}
 		finally
@@ -1254,10 +1300,13 @@ public partial class MainWindow : Window
 	{
 		if (!music.Available)
 		{
+			bool netEaseRunning = IsProcessRunning("cloudmusic");
 			_dataServicesViewModel.Music.Set(
 				DataLoadState.Empty,
-				"没有正在播放的音乐",
-				"已检测 Windows 媒体会话；打开网易云并开始播放后会自动出现");
+				netEaseRunning ? "已检测到网易云，等待媒体会话" : "没有正在播放的音乐",
+				netEaseRunning
+					? "请在网易云中开始播放；若已播放，请从托盘唤起一次主窗口"
+					: "已检测 Windows 媒体会话；打开网易云并开始播放后会自动出现");
 			return;
 		}
 
@@ -1269,21 +1318,49 @@ public partial class MainWindow : Window
 			$"{music.Title} — {music.Artist} · {lyricDetail}");
 	}
 
+	private static bool IsProcessRunning(string processName)
+	{
+		try
+		{
+			Process[] processes = Process.GetProcessesByName(processName);
+			foreach (Process process in processes)
+			{
+				process.Dispose();
+			}
+			return processes.Length > 0;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
 	private void UpdateCodexDataServiceStatus()
 	{
 		AiQuotaSnapshot? quota = _latestAiQuota;
 		CodexTaskSnapshot? tasks = _latestCodexTasks;
 		TimeSpan? duration = MaxDuration(_lastCodexQuotaDuration, _lastCodexTaskDuration);
+		int taskCount = tasks?.GetDisplayTasks(4).Count ?? 0;
+		bool tasksAvailable = tasks is { Available: true };
 		if (quota is { Available: true })
 		{
-			int taskCount = tasks?.GetDisplayTasks(4).Count ?? 0;
-			bool stale = _lastCodexQuotaError is not null || _lastCodexTaskError is not null;
+			bool stale = !tasksAvailable || _lastCodexQuotaError is not null || _lastCodexTaskError is not null;
 			_dataServicesViewModel.Codex.Set(
 				stale ? DataLoadState.Stale : DataLoadState.Ready,
 				$"可用 {quota.ClampedRemainingPercent:0}% · {taskCount} 条任务",
 				stale
-					? $"保留上次数据 · {_lastCodexQuotaError ?? _lastCodexTaskError}"
+					? $"额度可用 · 任务源暂不可用{FormatStatusReason(_lastCodexTaskError ?? tasks?.ErrorMessage)}"
 					: "额度与任务读取成功",
+				duration);
+			return;
+		}
+
+		if (tasksAvailable)
+		{
+			_dataServicesViewModel.Codex.Set(
+				DataLoadState.Stale,
+				taskCount > 0 ? $"{taskCount} 条任务 · 额度暂不可用" : "暂无活动任务 · 额度暂不可用",
+				$"任务读取成功 · 额度源暂不可用{FormatStatusReason(_lastCodexQuotaError)}",
 				duration);
 			return;
 		}
@@ -1296,11 +1373,18 @@ public partial class MainWindow : Window
 			duration);
 	}
 
+	private static string FormatStatusReason(string? reason) =>
+		string.IsNullOrWhiteSpace(reason) ? string.Empty : $"：{reason}";
+
 	private void UpdateWeatherDataServiceStatus(
 		WeatherSnapshot? weather,
 		AutomaticWeatherLocationResult? location,
 		bool weatherWasRequested)
 	{
+		if (!weatherWasRequested && weather is null)
+		{
+			return;
+		}
 		location ??= _lastWeatherLocationResult;
 		if (location is null && !weatherWasRequested)
 		{
@@ -1312,6 +1396,10 @@ public partial class MainWindow : Window
 		{
 			state = DataLoadState.Stale;
 		}
+		else if (_automaticLocationFallback && weather is { Available: true })
+		{
+			state = DataLoadState.Stale;
+		}
 		else if (weatherWasRequested && weather is { Available: false } && state == DataLoadState.Ready)
 		{
 			state = DataLoadState.Error;
@@ -1320,13 +1408,24 @@ public partial class MainWindow : Window
 		string locationName = weather?.LocationName
 			?? location?.Location?.DisplayName
 			?? ReadWeatherLocation();
-		string source = _settings.Weather?.UseAutomaticLocation == true ? "Windows 自动定位" : "手动城市";
+		string source = _automaticLocationFallback
+			? "手动回退"
+			: location?.Location is not null
+				? location.FromCache ? "Windows 位置缓存" : "Windows 自动定位"
+				: _settings.Weather?.UseAutomaticLocation == true ? "Windows 自动定位" : "手动城市";
+		string summarySource = source switch
+		{
+			"Windows 自动定位" => "自动定位",
+			"Windows 位置缓存" => "位置缓存",
+			_ => source
+		};
 		_dataServicesViewModel.Weather.Set(
 			state,
-			$"{source} · {locationName}",
+			$"{summarySource} · {locationName}",
 			weather is { Available: true }
 				? $"{weather.TemperatureC:0}° · {weather.ConditionText} · {location?.Message ?? "天气读取成功"}"
-				: location?.Message ?? weather?.ErrorMessage ?? "等待天气数据");
+				: location?.Message ?? weather?.ErrorMessage ?? "等待天气数据",
+			newSource: $"Open-Meteo · {source}");
 	}
 
 	private static TimeSpan? MaxDuration(TimeSpan? left, TimeSpan? right)

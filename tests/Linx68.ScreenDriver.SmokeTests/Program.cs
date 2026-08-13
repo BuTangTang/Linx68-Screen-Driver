@@ -123,7 +123,7 @@ Assert(profile.SafeArea.Top + profile.SafeArea.Bottom < profile.Height, "safe ar
 var renderer = new ScreenRenderer(profile);
 var themeDefinitions = BuiltInThemes.CreateDefinitions(new ImageTheme());
 var themes = themeDefinitions.Select(definition => definition.Theme).ToArray();
-Assert(themes.Length == 13, "built-in theme catalog should contain the 10 retained and 3 new schemes");
+Assert(themes.Length == 15, "built-in theme catalog should contain 15 verified display schemes");
 Assert(themes.All(theme => theme.Id is not "calendar" and not "ambient"), "removed calendar/ambient themes must not be registered");
 Assert(themes.All(theme => theme.Id != "clock-seconds"), "removed seconds progress theme must not be registered");
 Assert(themes.All(theme => theme.Id != "week"), "removed week calendar theme must not be registered");
@@ -136,16 +136,18 @@ Assert(themes.Single(theme => theme.Id == "codex-tasks").DisplayName == "Codex �
 Assert(themes.Any(theme => theme.Id == "weather-five-day"), "five-day weather theme must be registered");
 Assert(themes.Single(theme => theme.Id == "city-briefing").DisplayName == "城市晨报"
        && themes.Single(theme => theme.Id == "day-rhythm").DisplayName == "今日节奏"
-       && themes.Single(theme => theme.Id == "pixel-companion").DisplayName == "像素管家",
-    "the three useful and playful display schemes must be registered with stable ids");
+       && themes.Single(theme => theme.Id == "pixel-companion").DisplayName == "像素管家"
+       && themes.Single(theme => theme.Id == "signal-garden").DisplayName == "信号花园"
+       && themes.Single(theme => theme.Id == "music-cassette").DisplayName == "磁带余晖",
+    "useful and playful display schemes must be registered with stable ids");
 Assert(themes.All(theme => theme.Id != "stocks"), "removed stock theme must not be registered");
 Assert(BuiltInThemes.NormalizeThemeId("stocks") == "clock-weather", "legacy stock theme must migrate to clock-and-weather");
 Assert(BuiltInThemes.NormalizeThemeId("codex-info") == "ai-quota", "legacy combined Codex theme must migrate to Codex quota");
 Assert(themes.Where(theme => theme.Id.StartsWith("music", StringComparison.OrdinalIgnoreCase)).Select(theme => theme.Id)
            .OrderBy(id => id)
-           .SequenceEqual(["music"])
-       && themes.All(theme => theme.Id is not "music-vinyl" and not "music-cassette" and not "music-minimal" and not "music-poster"),
-    "the music catalog must contain only the confirmed cover-and-lyrics presentation");
+           .SequenceEqual(["music", "music-cassette"])
+       && themes.All(theme => theme.Id is not "music-vinyl" and not "music-minimal" and not "music-poster"),
+    "the music catalog must contain the two confirmed and visually distinct presentations");
 Assert(themes.Select(theme => theme.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() == themes.Length, "theme ids should be unique");
 Assert(themeDefinitions.All(definition => definition.Category != ThemeCategory.Other), "every built-in theme must declare a category");
 Assert(themeDefinitions.Single(definition => definition.Id == "weather-five-day").Requires(ThemeDataRequirements.Weather)
@@ -153,6 +155,7 @@ Assert(themeDefinitions.Single(definition => definition.Id == "weather-five-day"
        && themeDefinitions.Single(definition => definition.Id == "city-briefing").Requires(ThemeDataRequirements.Weather),
     "weather presentations must declare their data requirement");
 Assert(themeDefinitions.Single(definition => definition.Id == "pixel-companion").Requires(ThemeDataRequirements.System)
+	   && themeDefinitions.Single(definition => definition.Id == "signal-garden").Requires(ThemeDataRequirements.System)
        && themeDefinitions.Single(definition => definition.Id == "day-rhythm").DataRequirements == ThemeDataRequirements.None,
     "new schemes must request only the data they actually use");
 Assert(themeDefinitions.Single(definition => definition.Id == "weather-five-day").Category == ThemeCategory.Time
@@ -166,8 +169,9 @@ Assert(themeDefinitions.Single(definition => definition.Id == "music").Requires(
 Assert(themeDefinitions.Single(definition => definition.Id == "ai-quota").Requires(ThemeDataRequirements.CodexTasks)
        && themeDefinitions.Single(definition => definition.Id == "codex-tasks").Requires(ThemeDataRequirements.CodexTasks),
     "Codex task presentations must declare their task-data requirement");
-Assert(themes.Single(theme => theme.Id == "music").Description == "封面与连续同步歌词",
-    "the single music card must use a compact, non-wrapping description");
+Assert(themes.Single(theme => theme.Id == "music").Description == "封面与连续同步歌词"
+	   && themes.Single(theme => theme.Id == "music-cassette").Description == "复古磁带与歌词进度",
+    "music cards must use compact, non-wrapping descriptions");
 Assert(themeDefinitions.Where(definition => definition.Category == ThemeCategory.Music)
            .All(definition => definition.Requires(ThemeDataRequirements.Music | ThemeDataRequirements.Lyrics)),
     "all music presentation variants must request media and lyrics data");
@@ -983,6 +987,60 @@ var invalidArtworkFrame = renderer.Render(musicTheme, SystemSnapshot.DesignSampl
 Assert(continuousLyricsFrame.JpegBytes.Length <= profile.MaxJpegBytes
        && noArtworkFrame.JpegBytes.SequenceEqual(invalidArtworkFrame.JpegBytes),
     "continuous lyrics and invalid artwork fallback must render stable device frames");
+var cassetteTheme = themes.Single(theme => theme.Id == "music-cassette");
+var cassettePlayingFrame = renderer.Render(cassetteTheme, SystemSnapshot.DesignSample with
+{
+	Music = animatedMusic with { Position = TimeSpan.FromSeconds(94), Lyrics = timedMusicLyrics }
+});
+var cassettePausedFrame = renderer.Render(cassetteTheme, SystemSnapshot.DesignSample with
+{
+	Music = animatedMusic with { Position = TimeSpan.FromSeconds(94), IsPlaying = false, Lyrics = LyricsSnapshot.Unavailable }
+});
+var cassetteEmptyFrame = renderer.Render(cassetteTheme, SystemSnapshot.DesignSample with { Music = MusicSnapshot.Unavailable });
+var cassetteLiveFrameA = renderer.Render(cassetteTheme, SystemSnapshot.DesignSample with
+{
+	Timestamp = SystemSnapshot.DesignSample.Timestamp.AddSeconds(1),
+	Music = animatedMusic with { Duration = TimeSpan.Zero, Position = TimeSpan.Zero, IsPlaying = true }
+});
+var cassetteLiveFrameB = renderer.Render(cassetteTheme, SystemSnapshot.DesignSample with
+{
+	Timestamp = SystemSnapshot.DesignSample.Timestamp.AddSeconds(2),
+	Music = animatedMusic with { Duration = TimeSpan.Zero, Position = TimeSpan.Zero, IsPlaying = true }
+});
+Assert(cassettePlayingFrame.JpegBytes.Length <= profile.MaxJpegBytes
+	   && cassettePausedFrame.JpegBytes.Length <= profile.MaxJpegBytes
+	   && cassetteEmptyFrame.JpegBytes.Length <= profile.MaxJpegBytes
+	   && !cassettePlayingFrame.JpegBytes.SequenceEqual(cassettePausedFrame.JpegBytes)
+	   && !cassettePausedFrame.JpegBytes.SequenceEqual(cassetteEmptyFrame.JpegBytes)
+	   && !cassetteLiveFrameA.JpegBytes.SequenceEqual(cassetteLiveFrameB.JpegBytes),
+	"cassette music theme must distinguish playing, paused/no-lyrics and empty states, and animate unknown-duration playback");
+var signalGardenTheme = themes.Single(theme => theme.Id == "signal-garden");
+var calmGardenFrame = renderer.Render(signalGardenTheme, SystemSnapshot.DesignSample with
+{
+	CpuPercent = 8,
+	MemoryPercent = 24,
+	DownloadMbps = 0,
+	UploadMbps = 0
+});
+var stressedGardenFrame = renderer.Render(signalGardenTheme, SystemSnapshot.DesignSample with
+{
+	CpuPercent = 94,
+	MemoryPercent = 91,
+	DownloadMbps = 80,
+	UploadMbps = 30
+});
+var trickleGardenFrame = renderer.Render(signalGardenTheme, SystemSnapshot.DesignSample with
+{
+	CpuPercent = 8,
+	MemoryPercent = 24,
+	DownloadMbps = 0.3,
+	UploadMbps = 0.1
+});
+Assert(calmGardenFrame.JpegBytes.Length <= profile.MaxJpegBytes
+	   && stressedGardenFrame.JpegBytes.Length <= profile.MaxJpegBytes
+	   && !calmGardenFrame.JpegBytes.SequenceEqual(stressedGardenFrame.JpegBytes)
+	   && !calmGardenFrame.JpegBytes.SequenceEqual(trickleGardenFrame.JpegBytes),
+	"signal garden must distinguish zero, low and high traffic within the device limit");
 int musicDesignPreviewArgumentIndex = Array.IndexOf(args, "--music-design-preview");
 if (musicDesignPreviewArgumentIndex >= 0)
 {
@@ -998,7 +1056,7 @@ Console.WriteLine("PASS cover music theme renders continuous lyrics and stable a
 
 var weatherResponses = new Queue<string>(new[]
 {
-    """{"results":[{"name":"北京","latitude":39.9042,"longitude":116.4074}]}""",
+    """{"results":[{"name":"北京","country_code":"CN","feature_code":"PPLC","latitude":39.9042,"longitude":116.4074}]}""",
     """{"current":{"temperature_2m":31.4,"apparent_temperature":34.2,"relative_humidity_2m":58,"weather_code":2,"is_day":1},"daily":{"time":["2026-07-28","2026-07-29","2026-07-30","2026-07-31","2026-08-01"],"weather_code":[2,3,61,1,0],"temperature_2m_max":[32,31,29,33,34],"temperature_2m_min":[24,23,22,24,25]}}"""
 });
 var weatherHandler = new SequenceHandler(weatherResponses);
@@ -1016,10 +1074,88 @@ using (var weatherSource = new OpenMeteoWeatherSnapshotSource(weatherClient))
     var cachedWeather = await weatherSource.ReadAsync(new WeatherSettings { LocationQuery = "北京" });
     Assert(ReferenceEquals(weatherSnapshot, cachedWeather), "weather snapshot should use the ten-minute cache");
     Assert(weatherHandler.RequestCount == 2, "cached weather read must not call the APIs again");
+	var differentCityFailure = await weatherSource.ReadAsync(new WeatherSettings { LocationQuery = "北海" });
+	Assert(!differentCityFailure.Available
+	       && differentCityFailure.LocationName != "北京"
+	       && !differentCityFailure.IsStale,
+		"a failed request for a new city must never fall back to another city's cached weather");
+	Assert(weatherHandler.RequestCount == 3, "a different city must bypass the previous city's cache");
     var fiveDayFrame = renderer.Render(themes.Single(theme => theme.Id == "weather-five-day"), SystemSnapshot.DesignSample with { Weather = weatherSnapshot });
     Assert(fiveDayFrame.JpegBytes is [0xFF, 0xD8, ..], "five-day weather data view did not render");
 }
-Console.WriteLine("PASS Open-Meteo geocoding/current weather parser and cache");
+Console.WriteLine("PASS Open-Meteo parser, same-city cache and cross-city failure isolation");
+
+var ambiguousCityResponses = new Queue<string>(new[]
+{
+	"""{"results":[{"name":"北海槟城","country_code":"MY","feature_code":"PPL","population":107591,"latitude":5.3991,"longitude":100.36382},{"name":"北海","country_code":"CN","feature_code":"PPL","latitude":32.86609,"longitude":120.33649}]}""",
+	"""{"results":[{"name":"北海市","country_code":"CN","feature_code":"PPLA2","population":525329,"latitude":21.48349,"longitude":109.11549}]}""",
+	"""{"current":{"temperature_2m":30.1,"apparent_temperature":33.0,"relative_humidity_2m":72,"weather_code":2,"is_day":1},"daily":{"time":["2026-08-09"],"weather_code":[2],"temperature_2m_max":[32],"temperature_2m_min":[27]}}"""
+});
+var ambiguousCityHandler = new SequenceHandler(ambiguousCityResponses);
+using (var ambiguousCityClient = new HttpClient(ambiguousCityHandler))
+using (var ambiguousCitySource = new OpenMeteoWeatherSnapshotSource(ambiguousCityClient))
+{
+	WeatherSnapshot beihaiWeather = await ambiguousCitySource.ReadAsync(
+		new WeatherSettings { LocationQuery = "北海" });
+	Assert(beihaiWeather.Available
+	       && beihaiWeather.LocationName == "北海市"
+	       && ambiguousCityHandler.RequestCount == 3,
+		$"ambiguous Chinese city names must prefer the matching China administrative city: location={beihaiWeather.LocationName}; requests={ambiguousCityHandler.RequestCount}");
+}
+Console.WriteLine("PASS Open-Meteo ambiguous Chinese city ranking");
+
+var missingFeatureResponses = new Queue<string>(new[]
+{
+	"""{"results":[{"name":"北海","country_code":"CN","latitude":32.86609,"longitude":120.33649}]}""",
+	"""{"results":[{"name":"北海市","country_code":"CN","feature_code":"PPLA2","population":525329,"latitude":21.48349,"longitude":109.11549}]}""",
+	"""{"current":{"temperature_2m":30.1,"apparent_temperature":33.0,"relative_humidity_2m":72,"weather_code":2,"is_day":1},"daily":{"time":["2026-08-09"],"weather_code":[2],"temperature_2m_max":[32],"temperature_2m_min":[27]}}"""
+});
+var missingFeatureHandler = new SequenceHandler(missingFeatureResponses);
+using (var missingFeatureClient = new HttpClient(missingFeatureHandler))
+using (var missingFeatureSource = new OpenMeteoWeatherSnapshotSource(missingFeatureClient))
+{
+	WeatherSnapshot missingFeatureWeather = await missingFeatureSource.ReadAsync(
+		new WeatherSettings { LocationQuery = "北海" });
+	Assert(missingFeatureWeather.LocationName == "北海市"
+	       && missingFeatureHandler.RequestCount == 3,
+		"a candidate without feature_code must not suppress the administrative-city disambiguation query");
+}
+Console.WriteLine("PASS missing city feature metadata still triggers disambiguation");
+
+var unresolvedAmbiguityResponses = new Queue<string>(new[]
+{
+	"""{"results":[{"name":"北海","country_code":"CN","feature_code":"PPL","latitude":32.86609,"longitude":120.33649},{"name":"北海","country_code":"CN","feature_code":"PPL","latitude":39.35949,"longitude":121.84003}]}"""
+});
+using (var unresolvedAmbiguityClient = new HttpClient(new SequenceHandler(unresolvedAmbiguityResponses)))
+using (var unresolvedAmbiguitySource = new OpenMeteoWeatherSnapshotSource(unresolvedAmbiguityClient))
+{
+	WeatherSnapshot unresolvedAmbiguity = await unresolvedAmbiguitySource.ReadAsync(
+		new WeatherSettings { LocationQuery = "北海" });
+	Assert(!unresolvedAmbiguity.Available
+	       && unresolvedAmbiguity.ErrorMessage?.Contains("多个候选", StringComparison.Ordinal) == true,
+		"an unresolved same-name city must fail explicitly instead of silently choosing an arbitrary locality");
+}
+Console.WriteLine("PASS unresolved city ambiguity stays explicit");
+
+using (var canceledWeatherClient = new HttpClient(new CancellationOnlyHandler()))
+using (var canceledWeatherSource = new OpenMeteoWeatherSnapshotSource(canceledWeatherClient))
+using (var canceledWeather = new CancellationTokenSource(TimeSpan.FromMilliseconds(50)))
+{
+	bool cancellationPropagated = false;
+	try
+	{
+		await canceledWeatherSource.ReadAsync(
+			new WeatherSettings { LocationQuery = "北海" },
+			canceledWeather.Token);
+	}
+	catch (OperationCanceledException) when (canceledWeather.IsCancellationRequested)
+	{
+		cancellationPropagated = true;
+	}
+	Assert(cancellationPropagated,
+		"a superseded weather request must propagate caller cancellation instead of becoming an unavailable snapshot");
+}
+Console.WriteLine("PASS Open-Meteo caller cancellation propagation");
 
 var automaticWeatherResponses = new Queue<string>(new[]
 {
@@ -1054,7 +1190,18 @@ using (var reverseGeocoder = new BigDataCloudReverseGeocoder(reverseGeocodeClien
     string? city = await reverseGeocoder.ResolveCityAsync(22.5431, 114.0579);
     Assert(city == "深圳市", "reverse geocoder did not prefer the city name");
     Assert(reverseGeocodeHandler.RequestCount == 1, "reverse geocoder should issue one request");
+	Assert(reverseGeocodeHandler.LastRequestUri?.Query.Contains("latitude=22.543&longitude=114.058", StringComparison.Ordinal) == true,
+		$"city-level reverse geocoding must limit coordinate precision: {reverseGeocodeHandler.LastRequestUri}");
 }
+AutomaticWeatherLocationResult unresolvedCity = WindowsWeatherLocationProvider.CreateLocatedResult(
+	22.5431,
+	114.0579,
+	null,
+	DateTimeOffset.Now);
+Assert(unresolvedCity.State == DataLoadState.Stale
+	   && unresolvedCity.Location?.DisplayName == "当前位置"
+	   && unresolvedCity.Message.Contains("城市反向解析失败", StringComparison.Ordinal),
+	"successful coordinates with failed city resolution must remain explicit stale data instead of Ready");
 Console.WriteLine("PASS automatic-location city reverse geocoding");
 if (args.Contains("--weather-location-probe", StringComparer.OrdinalIgnoreCase))
 {
@@ -1079,7 +1226,7 @@ if (newThemePreviewIndex >= 0)
     Assert(newThemePreviewIndex + 1 < args.Length, "--new-theme-preview requires an output directory");
     string outputDirectory = Path.GetFullPath(args[newThemePreviewIndex + 1]);
     Directory.CreateDirectory(outputDirectory);
-    foreach (string themeId in new[] { "city-briefing", "day-rhythm", "pixel-companion" })
+    foreach (string themeId in new[] { "city-briefing", "day-rhythm", "pixel-companion", "signal-garden", "music-cassette" })
     {
         IScreenTheme theme = themes.Single(candidate => candidate.Id == themeId);
         RenderedFrame nightFrame = renderer.Render(theme, SystemSnapshot.DesignSample);
@@ -1087,7 +1234,7 @@ if (newThemePreviewIndex >= 0)
         await File.WriteAllBytesAsync(Path.Combine(outputDirectory, $"{themeId}-night.jpg"), nightFrame.JpegBytes);
         await File.WriteAllBytesAsync(Path.Combine(outputDirectory, $"{themeId}-day.jpg"), dayFrame.JpegBytes);
     }
-    Console.WriteLine($"PASS wrote day/night previews for the three new schemes to {outputDirectory}");
+    Console.WriteLine($"PASS wrote day/night previews for five distinctive schemes to {outputDirectory}");
 }
 
 var maxQualityFrame = renderer.Render(themes[0], SystemSnapshot.DesignSample, jpegQuality: 100);
@@ -1316,6 +1463,7 @@ sealed class SequenceHandler : HttpMessageHandler
 {
     private readonly Queue<string> _responses;
     public int RequestCount { get; private set; }
+	public Uri? LastRequestUri { get; private set; }
 
     public SequenceHandler(Queue<string> responses)
     {
@@ -1325,6 +1473,7 @@ sealed class SequenceHandler : HttpMessageHandler
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         RequestCount++;
+		LastRequestUri = request.RequestUri;
         if (_responses.Count == 0)
         {
             throw new InvalidOperationException("No mocked weather response remains.");
@@ -1357,6 +1506,17 @@ sealed class RecordingHandler : HttpMessageHandler
             Content = new StringContent(ResponseBody)
         };
     }
+}
+
+sealed class CancellationOnlyHandler : HttpMessageHandler
+{
+	protected override async Task<HttpResponseMessage> SendAsync(
+		HttpRequestMessage request,
+		CancellationToken cancellationToken)
+	{
+		await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+		throw new InvalidOperationException("unreachable");
+	}
 }
 
 sealed class NetEaseArtworkHandler : HttpMessageHandler

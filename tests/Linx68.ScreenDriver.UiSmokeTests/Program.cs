@@ -54,6 +54,13 @@ internal static class Program
 		VerifyThemeCategoryNavigation();
 		VerifyManualThemeSelectionStopsAutoMusicSwitch();
 		VerifyLatestThemeRefreshWins();
+		VerifyRapidThemeSelectionUsesCachedPreview();
+		VerifyAutomaticRefreshUpdatesHeader();
+		VerifyDevicePushResultProjection();
+		VerifyCodexPartialDataProjection();
+		VerifyWeatherManualFallbackProjection();
+		VerifyManualWeatherRefreshSkipsAutomaticLocation();
+		VerifyDataServicesRefreshCancellation();
 		VerifyAutomationControlDependency();
 		VerifyNavigationResetsScrollPosition();
 		VerifyRuntimeAppearanceSwitch(app);
@@ -114,7 +121,7 @@ internal static class Program
             definitions.Select(definition => new ThemeCardViewModel(definition, preview: null)),
             "clock-weather");
         Assert(viewModel.ThemeGroups.Count == 4
-               && viewModel.ThemeGroups.Single(group => group.Id == "music").Themes.Count == 1
+               && viewModel.ThemeGroups.Single(group => group.Id == "music").Themes.Count == 2
                && viewModel.ThemeGroups.Sum(group => group.Themes.Count) == definitions.Count
                && !viewModel.IsAllCategorySelected
                && viewModel.VisibleThemes.All(theme => theme.Definition.CategoryId == viewModel.SelectedTheme!.Definition.CategoryId),
@@ -136,6 +143,14 @@ internal static class Program
         viewModel.UpdateCardWidth(960);
         Assert(viewModel.ThemeGroups.SelectMany(group => group.Themes).All(theme => theme.CardWidth * 3 + 36 <= 960),
             "wide galleries must use three columns to reduce unnecessary vertical scrolling");
+        viewModel.SelectCategory("music");
+        viewModel.SetThemes(
+            definitions.Select(definition => new ThemeCardViewModel(definition, preview: null)),
+            "system");
+        Assert(viewModel.SelectedTheme?.Id == "system"
+               && viewModel.ThemeGroups.Single(group => group.Id == "music").IsSelected
+               && viewModel.VisibleThemes.All(theme => theme.Definition.CategoryId == "music"),
+            "rebuilding preview cards must preserve the category the user is browsing instead of jumping to the selected theme category");
         Console.WriteLine("PASS MVVM screen categories, selection and responsive compact cards");
     }
 
@@ -288,8 +303,9 @@ internal static class Program
         viewModel.Codex.BeginRefresh();
         Assert(viewModel.Codex.State == DataLoadState.Loading
                && viewModel.Codex.Summary == preservedSummary
+		       && viewModel.Codex.Detail == "正在读取"
                && viewModel.Codex.StateLabel == "更新中",
-            "loading a data source must preserve its last summary and expose a stable loading state");
+			"first loading must preserve the summary without claiming nonexistent previous content");
         viewModel.Codex.Set(DataLoadState.Ready, "可用 80%", "读取成功", TimeSpan.FromMilliseconds(120));
         Assert(viewModel.Codex.IsReady && viewModel.Codex.Timing == "120 ms",
             "ready data state must expose the latest value and measured duration");
@@ -298,8 +314,18 @@ internal static class Program
             "stale data must remain visibly distinct without clearing the last value");
         viewModel.Codex.Set(DataLoadState.Error, "尚未获得 Codex 数据", "读取失败");
         viewModel.CompleteRefresh(TimeSpan.FromMilliseconds(250), DateTimeOffset.Now);
-        Assert(viewModel.OverallStatus.Contains("需要留意", StringComparison.Ordinal),
+        Assert(viewModel.OverallStatus == "0/4 已就绪 · 1 项需要留意 · 3 项暂无数据",
             "overall data health must surface stale or error states");
+		viewModel.Codex.Set(DataLoadState.Empty, "等待读取", "尚未刷新");
+		viewModel.CompleteRefresh(TimeSpan.FromMilliseconds(10), DateTimeOffset.Now);
+		Assert(viewModel.OverallStatus == "0/4 已就绪 · 4 项暂无数据",
+			$"an all-empty dashboard must not claim normal health: {viewModel.OverallStatus}");
+		string fullRefreshText = viewModel.LastRefreshText;
+		viewModel.Music.Set(DataLoadState.Ready, "网易云音乐 · 正在播放", "媒体读取成功");
+		viewModel.UpdateOverallStatus();
+		Assert(viewModel.LastRefreshText == fullRefreshText
+		       && viewModel.OverallStatus.StartsWith("1/4 已就绪", StringComparison.Ordinal),
+			"automatic preview health updates must not overwrite the last full data-source refresh timing");
         Console.WriteLine("PASS data services five-state projection and stable loading content");
     }
 
@@ -321,6 +347,9 @@ internal static class Program
         var lightKeys = light.Keys.Cast<object>().Select(key => key.ToString()).OrderBy(key => key).ToArray();
         var darkKeys = dark.Keys.Cast<object>().Select(key => key.ToString()).OrderBy(key => key).ToArray();
         Assert(lightKeys.SequenceEqual(darkKeys), "light and dark palettes must expose identical semantic keys");
+        string[] requiredStateBrushes = ["SuccessSoftBrush", "WarningBrush", "WarningSoftBrush", "DangerSoftBrush"];
+        Assert(requiredStateBrushes.All(lightKeys.Contains),
+            $"status cards must have semantic success, warning and error surfaces: {string.Join(", ", requiredStateBrushes.Except(lightKeys))}");
         var lightBackground = ((SolidColorBrush)light["AppBackground"]).Color;
         var darkBackground = ((SolidColorBrush)dark["AppBackground"]).Color;
         Assert(lightBackground != darkBackground && darkBackground == Color.FromRgb(16, 17, 18),
@@ -420,10 +449,10 @@ internal static class Program
 		Assert(sidebarNavigation.Children.Count == 6
 		       && screenNavigation.FontSize == 15,
 			"sidebar navigation must include data services and keep readable first-level destinations");
-		Assert(deviceStatus.Text == "设备离线"
+		Assert(deviceStatus.Text == "设备未配置"
 		       && deviceStatus.FontSize == 14
 		       && deviceStatus.Foreground == deviceStatusDot.Fill,
-			"device status must start as a clear offline state with a matching status indicator");
+			"an unconfigured device must start in a neutral state with a matching status indicator");
 		Assert(previewStatus.Text == "本地预览",
 			"offline devices must explain that the preview remains local and responsive");
 		Assert(previewThemeSummary.Child is StackPanel { Children.Count: 3 },
@@ -515,6 +544,7 @@ internal static class Program
         var weatherAuto = (RadioButton)window.FindName("DataWeatherAutoRadio");
         var weatherManual = (RadioButton)window.FindName("DataWeatherManualRadio");
         var city = (TextBox)window.FindName("DataWeatherCityTextBox");
+		var cityLabel = (TextBlock)window.FindName("DataWeatherCityLabel");
         Assert(panel.IsVisible
                && panel.ActualWidth <= ((ScrollViewer)window.FindName("ThemeScrollViewer")).ViewportWidth + 1
                && previewRail.Visibility == Visibility.Collapsed
@@ -523,8 +553,13 @@ internal static class Program
         Assert(weatherAuto.IsChecked == true
                && weatherManual.IsChecked == false
                && !city.IsEnabled
+			   && cityLabel.Text == "定位失败时回退"
                && city.Text == "北海",
             "weather controls must clearly distinguish Windows auto-location from the saved manual fallback city");
+		weatherManual.IsChecked = true;
+		WaitForDispatcher(TimeSpan.FromMilliseconds(80));
+		Assert(city.IsEnabled && cityLabel.Text == "手动城市",
+			"manual weather mode must make the city editable and relabel it without changing card geometry");
         Assert(window.FindName("CodexServiceCard") is Border
                && window.FindName("MusicServiceCard") is Border
                && window.FindName("WeatherServiceCard") is Border
@@ -701,11 +736,320 @@ internal static class Program
             ?.GetValue(window) as string;
         Assert(settled
                && shell.Screen.SelectedTheme?.Id == "day-rhythm"
-               && effectiveThemeId == "day-rhythm",
+               && effectiveThemeId == "day-rhythm"
+		       && ((TextBlock)window.FindName("HeaderRefreshTimingText")).Text.StartsWith("预览更新 ", StringComparison.Ordinal),
             $"a cancelled Codex refresh must not overwrite the latest theme selection: selected={shell.Screen.SelectedTheme?.Id}; effective={effectiveThemeId}");
         window.Close();
         Console.WriteLine("PASS latest theme request cancels stale Codex refresh results");
     }
+
+	private static void VerifyRapidThemeSelectionUsesCachedPreview()
+	{
+		var settings = new AppSettings
+		{
+			HasCompletedOnboarding = true,
+			SelectedThemeId = "system",
+			AutoPush = false,
+			RefreshSeconds = 60,
+			MinimizeToTray = false,
+			CloseToTray = false
+		};
+		var window = new MainWindow(settings, new InMemorySettingsStore(settings));
+		window.Show();
+		WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+		var shell = (ShellViewModel)window.DataContext;
+		var preview = (DevicePreviewControl)window.FindName("DevicePreview");
+
+		shell.Screen.SelectTheme("dashboard", notify: true);
+		ImageSource? firstSelectionFrame = preview.FrameSource;
+		shell.Screen.SelectTheme("signal-garden", notify: true);
+		bool updatedWithinBudget = WaitForCondition(
+			() => shell.Screen.SelectedTheme?.Id == "signal-garden"
+			      && ((TextBlock)window.FindName("CurrentThemeNameText")).Text == "信号花园"
+			      && preview.FrameSource is not null
+			      && !ReferenceEquals(preview.FrameSource, firstSelectionFrame),
+			TimeSpan.FromMilliseconds(150));
+
+		Assert(updatedWithinBudget,
+			"a second theme selection during an active commit must render its cached preview within 150 ms");
+		window.Close();
+		Console.WriteLine("PASS rapid theme selection renders the latest cached preview within 150 ms");
+	}
+
+    private static void VerifyAutomaticRefreshUpdatesHeader()
+    {
+        var settings = new AppSettings
+        {
+            HasCompletedOnboarding = true,
+            SelectedThemeId = "system",
+            AutoPush = false,
+            RefreshSeconds = 1,
+            MinimizeToTray = false,
+            CloseToTray = false
+        };
+        var window = new MainWindow(settings, new InMemorySettingsStore(settings));
+        window.Show();
+
+        var refreshTiming = (TextBlock)window.FindName("HeaderRefreshTimingText");
+        bool updated = WaitForCondition(
+            () => refreshTiming.Text.StartsWith("预览更新 ", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(4));
+
+        Assert(updated,
+            $"successful automatic refreshes must update the global activity timestamp: '{refreshTiming.Text}'");
+
+        var showFailed = typeof(MainWindow).GetMethod(
+            "ShowPreviewRefreshFailed",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert(showFailed is not null,
+            "the global refresh activity must expose the stale/error transition used by automatic refreshes");
+        showFailed!.Invoke(window, null);
+        Assert(refreshTiming.Text.StartsWith("上次预览 ", StringComparison.Ordinal)
+               && refreshTiming.Text.EndsWith("刷新失败", StringComparison.Ordinal),
+            $"a failed refresh must preserve the last successful timestamp: '{refreshTiming.Text}'");
+
+        var showCompleted = typeof(MainWindow).GetMethod(
+            "ShowPreviewRefreshCompleted",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        showCompleted!.Invoke(window, null);
+        Assert(refreshTiming.Text.StartsWith("预览更新 ", StringComparison.Ordinal),
+            $"a successful recovery must replace the stale/error activity text: '{refreshTiming.Text}'");
+        window.Close();
+        Console.WriteLine($"PASS automatic refresh activity shows success, stale failure and recovery: {refreshTiming.Text}");
+    }
+
+    private static void VerifyDevicePushResultProjection()
+    {
+        var settings = new AppSettings
+        {
+            HasCompletedOnboarding = true,
+            SelectedThemeId = "system",
+            AutoPush = false,
+            MinimizeToTray = false,
+            CloseToTray = false
+        };
+        var window = new MainWindow(settings, new InMemorySettingsStore(settings));
+        window.Show();
+        WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+
+        var projectResult = typeof(MainWindow).GetMethod(
+            "SetDeviceStatus",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            binder: null,
+            types: [typeof(DevicePushResult)],
+            modifiers: null);
+        Assert(projectResult is not null,
+            "device status must project the full push result instead of collapsing attempted failures into the initial empty state");
+
+        var shell = (ShellViewModel)window.DataContext;
+        var deviceStatus = (TextBlock)window.FindName("DeviceStatusText");
+        var previewBadge = (Border)window.FindName("PreviewStatusBadge");
+		shell.NavigateCommand.Execute("dataServices");
+		WaitForDispatcher(TimeSpan.FromMilliseconds(100));
+		var deviceCard = window.FindName("DeviceStatusSummaryCard") as ContentControl;
+		Assert(deviceCard is not null,
+			"the device data-service summary card must be addressable for state and geometry verification");
+		deviceCard!.ApplyTemplate();
+		deviceCard.UpdateLayout();
+		var stateBadge = FindVisualChildren<Border>(deviceCard)
+			.SingleOrDefault(border => border.Name == "DataStateBadge");
+		var stateRail = FindVisualChildren<Border>(deviceCard)
+			.SingleOrDefault(border => border.Name == "DataStateRail");
+		var stateBadgeText = FindVisualChildren<TextBlock>(deviceCard)
+			.SingleOrDefault(text => text.Name == "DataStateBadgeText");
+		Assert(shell.DataServices.Device.State == DataLoadState.Empty
+		       && stateBadge?.Background is SolidColorBrush emptyBackground
+		       && stateBadgeText?.Foreground is SolidColorBrush emptyForeground
+		       && stateRail?.Background is SolidColorBrush emptyRail
+		       && emptyBackground.Color == ((SolidColorBrush)window.FindResource("DangerSoftBrush")).Color
+		       && emptyForeground.Color == ((SolidColorBrush)window.FindResource("DangerBrush")).Color
+		       && emptyRail.Color == ((SolidColorBrush)window.FindResource("DangerBrush")).Color,
+			"an empty data source must use the semantic danger badge and state rail");
+
+        projectResult!.Invoke(window, [new DevicePushResult(false, null, "连接设备超时", TimeSpan.FromSeconds(2))]);
+        Assert(deviceStatus.Text == "设备离线"
+               && shell.DataServices.Device.State == DataLoadState.Error
+               && shell.DataServices.Device.Detail == "连接设备超时"
+               && shell.DataServices.Device.Timing == "2000 ms"
+               && previewBadge.ToolTip?.ToString()?.Contains("连接设备超时", StringComparison.Ordinal) == true,
+            $"a failed device push must remain actionable: state={shell.DataServices.Device.State}; detail={shell.DataServices.Device.Detail}; timing={shell.DataServices.Device.Timing}");
+
+		WaitForDispatcher(TimeSpan.FromMilliseconds(50));
+        deviceCard.UpdateLayout();
+        string[] visibleTexts = FindVisualChildren<TextBlock>(deviceCard)
+            .Select(text => text.Text)
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .ToArray();
+        Assert(visibleTexts.Contains("连接设备超时")
+               && visibleTexts.Contains("2000 ms")
+               && visibleTexts.Contains("Linx68 HTTP 图像接口"),
+            $"the fixed status card must show detail, timing and source: {string.Join(" | ", visibleTexts)}");
+        Assert(stateBadge?.Background is SolidColorBrush errorBackground
+               && stateBadgeText?.Foreground is SolidColorBrush errorForeground
+               && errorBackground.Color == ((SolidColorBrush)window.FindResource("DangerSoftBrush")).Color
+               && errorForeground.Color == ((SolidColorBrush)window.FindResource("DangerBrush")).Color,
+            "an error state badge must use the semantic danger surface and foreground");
+
+        projectResult.Invoke(window, [new DevicePushResult(true, 200, "推送成功", TimeSpan.FromMilliseconds(42))]);
+        WaitForDispatcher(TimeSpan.FromMilliseconds(50));
+        Assert(deviceStatus.Text == "设备在线"
+               && shell.DataServices.Device.State == DataLoadState.Ready
+               && shell.DataServices.Device.Detail == "推送成功"
+               && shell.DataServices.Device.Timing == "42 ms"
+               && stateBadge?.Background is SolidColorBrush readyBackground
+               && stateBadgeText?.Foreground is SolidColorBrush readyForeground
+               && readyBackground.Color == ((SolidColorBrush)window.FindResource("SuccessSoftBrush")).Color
+               && readyForeground.Color == ((SolidColorBrush)window.FindResource("SuccessBrush")).Color,
+            $"a successful recovery must replace the device error state: state={shell.DataServices.Device.State}; detail={shell.DataServices.Device.Detail}; timing={shell.DataServices.Device.Timing}");
+
+        window.Close();
+        Console.WriteLine("PASS device push result projects empty, error and recovery states with timing");
+    }
+
+	private static void VerifyCodexPartialDataProjection()
+	{
+		var settings = new AppSettings
+		{
+			HasCompletedOnboarding = true,
+			AutoPush = false,
+			RefreshSeconds = 60,
+			MinimizeToTray = false,
+			CloseToTray = false
+		};
+		var window = new MainWindow(settings, new InMemorySettingsStore(settings));
+		window.Show();
+		WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+
+		CodexTaskSnapshot tasks = new(
+			true,
+			[
+				new CodexTaskItem("任务 A", CodexTaskStatus.Active, DateTimeOffset.Now),
+				new CodexTaskItem("任务 B", CodexTaskStatus.Completed, DateTimeOffset.Now.AddMinutes(-1), CompletedAt: DateTimeOffset.Now.AddMinutes(-1))
+			],
+			DateTimeOffset.Now);
+		const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+		typeof(MainWindow).GetField("_latestAiQuota", flags)!.SetValue(window, AiQuotaSnapshot.Unavailable("Codex"));
+		typeof(MainWindow).GetField("_latestCodexTasks", flags)!.SetValue(window, tasks);
+		typeof(MainWindow).GetField("_lastCodexQuotaError", flags)!.SetValue(window, "额度接口未返回数据");
+		typeof(MainWindow).GetField("_lastCodexTaskError", flags)!.SetValue(window, null);
+		typeof(MainWindow).GetMethod("UpdateCodexDataServiceStatus", flags)!.Invoke(window, null);
+
+		var shell = (ShellViewModel)window.DataContext;
+		Assert(shell.DataServices.Codex.State == DataLoadState.Stale
+		       && shell.DataServices.Codex.Summary == "2 条任务 · 额度暂不可用"
+		       && shell.DataServices.Codex.Detail.Contains("任务读取成功", StringComparison.Ordinal)
+		       && shell.DataServices.Codex.Detail.Contains("额度接口未返回数据", StringComparison.Ordinal),
+			$"available task data must not collapse into an empty Codex card when quota is unavailable: state={shell.DataServices.Codex.State}; summary={shell.DataServices.Codex.Summary}; detail={shell.DataServices.Codex.Detail}");
+
+		window.Close();
+		Console.WriteLine("PASS Codex partial-data state preserves available tasks when quota is unavailable");
+	}
+
+	private static void VerifyWeatherManualFallbackProjection()
+	{
+		var settings = new AppSettings
+		{
+			HasCompletedOnboarding = true,
+			AutoPush = false,
+			RefreshSeconds = 60,
+			Weather = new WeatherSettings { LocationQuery = "北海", UseAutomaticLocation = true },
+			MinimizeToTray = false,
+			CloseToTray = false
+		};
+		var window = new MainWindow(settings, new InMemorySettingsStore(settings));
+		window.Show();
+		WaitForDispatcher(TimeSpan.FromMilliseconds(900));
+
+		var weather = new WeatherSnapshot(true, "北海", 30, 33, 72, 2, true, DateTimeOffset.Now);
+		var failedAutomaticLocation = new AutomaticWeatherLocationResult(
+			DataLoadState.Error,
+			null,
+			"Windows 位置服务暂不可用",
+			DateTimeOffset.Now);
+		const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+		typeof(MainWindow).GetField("_automaticLocationFallback", flags)!.SetValue(window, true);
+		typeof(MainWindow).GetMethod("UpdateWeatherDataServiceStatus", flags)!.Invoke(
+			window,
+			[weather, failedAutomaticLocation, true]);
+
+		var shell = (ShellViewModel)window.DataContext;
+		Assert(shell.DataServices.Weather.State == DataLoadState.Stale
+		       && shell.DataServices.Weather.Summary == "手动回退 · 北海"
+		       && shell.DataServices.Weather.Source == "Open-Meteo · 手动回退"
+		       && !shell.DataServices.Weather.Summary.Contains("Windows 自动定位", StringComparison.Ordinal),
+			$"successful manual fallback weather must expose its actual source: state={shell.DataServices.Weather.State}; summary={shell.DataServices.Weather.Summary}");
+		string preservedSummary = shell.DataServices.Weather.Summary;
+		string preservedSource = shell.DataServices.Weather.Source;
+		typeof(MainWindow).GetMethod("UpdateWeatherDataServiceStatus", flags)!.Invoke(
+			window,
+			[null, null, false]);
+		Assert(shell.DataServices.Weather.Summary == preservedSummary
+		       && shell.DataServices.Weather.Source == preservedSource
+		       && shell.DataServices.Weather.State == DataLoadState.Stale,
+			"a non-weather preview refresh must not overwrite the last weather value with location-only state");
+
+		typeof(MainWindow).GetField("_automaticLocationFallback", flags)!.SetValue(window, false);
+		var relocated = new AutomaticWeatherLocationResult(
+			DataLoadState.Ready,
+			new AutomaticWeatherLocation(33.39, 120.13, "盐城市"),
+			"Windows 定位 · 盐城市",
+			DateTimeOffset.Now);
+		shell.DataServices.Weather.BeginRefresh();
+		typeof(MainWindow).GetMethod("UpdateWeatherDataServiceStatus", flags)!.Invoke(
+			window,
+			[null, relocated, true]);
+		Assert(shell.DataServices.Weather.State == DataLoadState.Ready
+		       && shell.DataServices.Weather.Summary == "自动定位 · 盐城市",
+			$"location-only relocation must leave Loading without retaining an old city: state={shell.DataServices.Weather.State}; summary={shell.DataServices.Weather.Summary}");
+
+		window.Close();
+		Console.WriteLine("PASS weather status identifies successful manual fallback as stale partial data");
+	}
+
+	private static void VerifyManualWeatherRefreshSkipsAutomaticLocation()
+	{
+		var provider = new CountingAutomaticWeatherLocationProvider();
+		var method = typeof(MainWindow).GetMethod(
+			"ReadLocationForDataServicesAsync",
+			System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+		Assert(method is not null,
+			"data-services refresh must centralize the automatic/manual location privacy boundary");
+		var task = (Task<AutomaticWeatherLocationResult>)method!.Invoke(
+			null,
+			[provider, false, true, "北海", CancellationToken.None] )!;
+		AutomaticWeatherLocationResult result = task.GetAwaiter().GetResult();
+		Assert(provider.ReadCount == 0
+		       && result.State == DataLoadState.Ready
+		       && result.Location is null
+		       && result.Message == "手动城市 · 北海",
+			$"manual-city refresh must not call Windows location: calls={provider.ReadCount}; state={result.State}; message={result.Message}");
+		Console.WriteLine("PASS manual-city refresh makes zero automatic-location calls");
+	}
+
+	private static void VerifyDataServicesRefreshCancellation()
+	{
+		var settings = new AppSettings
+		{
+			HasCompletedOnboarding = true,
+			AutoPush = false,
+			RefreshSeconds = 60,
+			MinimizeToTray = false,
+			CloseToTray = false
+		};
+		var window = new MainWindow(settings, new InMemorySettingsStore(settings));
+		const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+		var begin = typeof(MainWindow).GetMethod("BeginDataServicesRefresh", flags)!;
+		object?[] arguments = [null];
+		var cancellation = (CancellationTokenSource)begin.Invoke(window, arguments)!;
+		long startedVersion = (long)arguments[0]!;
+		typeof(MainWindow).GetMethod("CancelDataServicesRefresh", flags)!.Invoke(window, null);
+		long currentVersion = (long)typeof(MainWindow).GetField("_dataServicesRefreshVersion", flags)!.GetValue(window)!;
+		Assert(cancellation.IsCancellationRequested && currentVersion > startedVersion,
+			"mode or city changes must cancel the active data-services request and advance its version");
+		typeof(MainWindow).GetMethod("CompleteDataServicesRefresh", flags)!.Invoke(window, [cancellation]);
+		window.Close();
+		Console.WriteLine("PASS data-services refresh cancellation and version gate");
+	}
 
     private static void VerifyManualThemeSelectionStopsAutoMusicSwitch()
     {
@@ -929,6 +1273,23 @@ internal static class Program
             if (nested is not null) return nested;
         }
         return null;
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (T nested in FindVisualChildren<T>(child))
+            {
+                yield return nested;
+            }
+        }
     }
     private static void VerifyTextBox(Application app, double height, Thickness padding, string text)
     {
@@ -1160,6 +1521,17 @@ internal static class Program
     }
 
     private sealed record RenderResult(double HostHeight, int InkTop, int InkBottom, int InkRows);
+
+	private sealed class CountingAutomaticWeatherLocationProvider : IAutomaticWeatherLocationProvider
+	{
+		public int ReadCount { get; private set; }
+
+		public Task<AutomaticWeatherLocation?> TryGetAsync(CancellationToken cancellationToken = default)
+		{
+			ReadCount++;
+			return Task.FromResult<AutomaticWeatherLocation?>(new AutomaticWeatherLocation(1, 2, "不应被读取"));
+		}
+	}
 
     private sealed class InMemorySettingsStore(AppSettings settings) : ISettingsStore
     {

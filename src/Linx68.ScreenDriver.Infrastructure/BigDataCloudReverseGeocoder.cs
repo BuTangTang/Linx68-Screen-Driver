@@ -22,8 +22,9 @@ public sealed class BigDataCloudReverseGeocoder : IDisposable
         double longitude,
         CancellationToken cancellationToken = default)
     {
-        string latitudeText = latitude.ToString("0.######", CultureInfo.InvariantCulture);
-        string longitudeText = longitude.ToString("0.######", CultureInfo.InvariantCulture);
+		// City-level reverse geocoding does not require precise device coordinates.
+		string latitudeText = latitude.ToString("0.###", CultureInfo.InvariantCulture);
+		string longitudeText = longitude.ToString("0.###", CultureInfo.InvariantCulture);
         string uri = "https://api.bigdatacloud.net/data/reverse-geocode-client"
             + $"?latitude={latitudeText}&longitude={longitudeText}&localityLanguage=zh";
 

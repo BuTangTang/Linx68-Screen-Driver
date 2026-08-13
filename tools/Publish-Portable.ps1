@@ -61,7 +61,7 @@ try {
         "portable`r`n",
         [Text.UTF8Encoding]::new($false))
     Copy-Item -LiteralPath (Join-Path $workspace 'PORTABLE_README.txt') `
-        -Destination (Join-Path $staging '使用说明.txt') -Force
+        -Destination (Join-Path $staging 'README-zh-CN.txt') -Force
 
     $hash = (Get-FileHash -LiteralPath $targetExe -Algorithm SHA256).Hash
     [IO.File]::WriteAllText(

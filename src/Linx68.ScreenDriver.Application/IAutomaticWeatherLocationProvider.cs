@@ -4,6 +4,10 @@ public interface IAutomaticWeatherLocationProvider
 {
     Task<AutomaticWeatherLocation?> TryGetAsync(CancellationToken cancellationToken = default);
 
+	void InvalidateCache()
+	{
+	}
+
     async Task<AutomaticWeatherLocationResult> TryGetDetailsAsync(
         bool forceRefresh = false,
         CancellationToken cancellationToken = default)

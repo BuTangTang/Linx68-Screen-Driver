@@ -5,12 +5,18 @@ namespace Linx68.ScreenDriver.App.ViewModels;
 
 public sealed partial class DataSourceStatusViewModel(
     string title,
-    string source,
+	string initialSource,
     string initialSummary) : ObservableObject
 {
     public string Title { get; } = title;
 
-    public string Source { get; } = source;
+	private string source = initialSource;
+
+	public string Source
+	{
+		get => source;
+		set => SetProperty(ref source, value);
+	}
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StateLabel))]
@@ -45,18 +51,22 @@ public sealed partial class DataSourceStatusViewModel(
         DataLoadState newState,
         string newSummary,
         string newDetail,
-        TimeSpan? duration = null)
+		TimeSpan? duration = null,
+		string? newSource = null)
     {
         State = newState;
         Summary = newSummary;
         Detail = newDetail;
         Timing = duration is null ? "—" : $"{Math.Max(0, duration.Value.TotalMilliseconds):0} ms";
+		if (!string.IsNullOrWhiteSpace(newSource)) Source = newSource;
     }
 
     public void BeginRefresh(string? loadingDetail = null)
     {
+		bool hasPreviousResult = State != DataLoadState.Empty
+			|| !string.Equals(Detail, "尚未刷新", StringComparison.Ordinal);
         State = DataLoadState.Loading;
-        Detail = loadingDetail ?? (Summary.Length > 0 ? $"保留上次内容 · {Summary}" : "正在读取");
+		Detail = loadingDetail ?? (hasPreviousResult ? $"保留上次内容 · {Summary}" : "正在读取");
         Timing = "计时中";
     }
 }
@@ -74,7 +84,7 @@ public sealed partial class DataServicesViewModel : ObservableObject
     private string overallStatus = "等待首次刷新";
 
     [ObservableProperty]
-    private string lastRefreshText = "尚未刷新";
+    private string lastRefreshText = "尚未刷新全部";
 
     public void BeginRefresh()
     {
@@ -86,9 +96,24 @@ public sealed partial class DataServicesViewModel : ObservableObject
 
     public void CompleteRefresh(TimeSpan duration, DateTimeOffset completedAt)
     {
-        int problemCount = new[] { Codex, Music, Weather, Device }
+		UpdateOverallStatus();
+		LastRefreshText = $"{completedAt:HH:mm:ss} · 总耗时 {duration.TotalMilliseconds:0} ms";
+	}
+
+	public void UpdateOverallStatus()
+	{
+        DataSourceStatusViewModel[] sources = [Codex, Music, Weather, Device];
+        int readyCount = sources.Count(status => status.State == DataLoadState.Ready);
+        int loadingCount = sources.Count(status => status.State == DataLoadState.Loading);
+        int emptyCount = sources.Count(status => status.State == DataLoadState.Empty);
+        int problemCount = sources
             .Count(status => status.State is DataLoadState.Stale or DataLoadState.Error);
-        OverallStatus = problemCount == 0 ? "数据状态正常" : $"{problemCount} 项需要留意";
-        LastRefreshText = $"{completedAt:HH:mm:ss} · 总耗时 {duration.TotalMilliseconds:0} ms";
+        var notes = new List<string>(3);
+        if (problemCount > 0) notes.Add($"{problemCount} 项需要留意");
+        if (emptyCount > 0) notes.Add($"{emptyCount} 项暂无数据");
+        if (loadingCount > 0) notes.Add($"{loadingCount} 项更新中");
+        OverallStatus = notes.Count == 0
+            ? "4/4 已就绪 · 数据状态正常"
+            : $"{readyCount}/4 已就绪 · {string.Join(" · ", notes)}";
     }
 }

@@ -11,9 +11,7 @@ public sealed class OpenMeteoWeatherSnapshotSource : IWeatherSnapshotSource, IDi
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(10);
     private readonly HttpClient _client;
     private readonly bool _ownsClient;
-    private WeatherSnapshot? _cached;
-    private string? _cachedQuery;
-    private DateTimeOffset _lastFetch;
+	private CacheEntry? _cache;
 
     public OpenMeteoWeatherSnapshotSource(HttpClient? client = null)
     {
@@ -27,11 +25,12 @@ public sealed class OpenMeteoWeatherSnapshotSource : IWeatherSnapshotSource, IDi
         ArgumentNullException.ThrowIfNull(settings);
         var query = BuildCacheKey(settings);
         var now = DateTimeOffset.Now;
-        if (_cached is not null
-            && string.Equals(_cachedQuery, query, StringComparison.OrdinalIgnoreCase)
-            && now - _lastFetch < CacheDuration)
+		CacheEntry? cached = Volatile.Read(ref _cache);
+		if (cached is not null
+			&& string.Equals(cached.Query, query, StringComparison.OrdinalIgnoreCase)
+			&& now - cached.FetchedAt < CacheDuration)
         {
-            return _cached;
+			return cached.Snapshot;
         }
 
         try
@@ -51,16 +50,22 @@ public sealed class OpenMeteoWeatherSnapshotSource : IWeatherSnapshotSource, IDi
                             : settings.LocationQuery.Trim(),
                         cancellationToken);
             var snapshot = await ReadCurrentAsync(location, cancellationToken);
-            _cached = snapshot;
-            _cachedQuery = query;
-            _lastFetch = now;
+			cancellationToken.ThrowIfCancellationRequested();
+			Volatile.Write(ref _cache, new CacheEntry(query, snapshot, DateTimeOffset.Now));
             return snapshot;
         }
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		{
+			throw;
+		}
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
         {
-            return _cached is null
-                ? WeatherSnapshot.Unavailable(ex.Message)
-                : _cached with { IsStale = true, ErrorMessage = ex.Message };
+			cached = Volatile.Read(ref _cache);
+			bool cachedLocationMatches = cached is not null
+				&& string.Equals(cached.Query, query, StringComparison.OrdinalIgnoreCase);
+            return cachedLocationMatches
+				? cached!.Snapshot with { IsStale = true, ErrorMessage = ex.Message }
+                : WeatherSnapshot.Unavailable(ex.Message);
         }
     }
 
@@ -81,9 +86,52 @@ public sealed class OpenMeteoWeatherSnapshotSource : IWeatherSnapshotSource, IDi
     }
     private async Task<LocationResult> ResolveLocationAsync(string query, CancellationToken cancellationToken)
     {
-        var uri = "https://geocoding-api.open-meteo.com/v1/search?name="
-            + Uri.EscapeDataString(query)
-            + "&count=1&language=zh&format=json";
+		List<LocationCandidate> candidates = await ReadLocationCandidatesAsync(query, cancellationToken);
+		bool hasAdministrativeCity = candidates.Any(candidate => IsAdministrativeCityCandidate(query, candidate));
+		if (!hasAdministrativeCity && IsUnsuffixedChineseCityQuery(query))
+		{
+			try
+			{
+				candidates.AddRange(await ReadLocationCandidatesAsync(query + "市", cancellationToken));
+			}
+			catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+			{
+				throw;
+			}
+			catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+			{
+				// The optional suffix lookup timed out. Keep the original candidates
+				// so an otherwise unambiguous city can still resolve.
+			}
+			catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException)
+			{
+				// The original candidates remain usable when they identify one clear place.
+			}
+			hasAdministrativeCity = candidates.Any(candidate => IsAdministrativeCityCandidate(query, candidate));
+			int exactCandidateCount = candidates.Count(candidate => NamesMatch(query, candidate.Name));
+			if (!hasAdministrativeCity && exactCandidateCount > 1)
+			{
+				throw new InvalidOperationException($"城市名称存在多个候选，请输入“{query}市”或补充省份");
+			}
+		}
+		LocationCandidate? selected = candidates
+			.OrderByDescending(candidate => ScoreCandidate(query, candidate))
+			.FirstOrDefault();
+		if (selected is null)
+		{
+			throw new InvalidOperationException($"没有找到城市：{query}");
+		}
+
+		return new LocationResult(selected.Name, selected.Latitude, selected.Longitude);
+	}
+
+	private async Task<List<LocationCandidate>> ReadLocationCandidatesAsync(
+		string query,
+		CancellationToken cancellationToken)
+	{
+		var uri = "https://geocoding-api.open-meteo.com/v1/search?name="
+			+ Uri.EscapeDataString(query)
+			+ "&count=10&language=zh&format=json";
         using var response = await _client.GetAsync(uri, cancellationToken);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -92,15 +140,54 @@ public sealed class OpenMeteoWeatherSnapshotSource : IWeatherSnapshotSource, IDi
             || results.ValueKind != JsonValueKind.Array
             || results.GetArrayLength() == 0)
         {
-            throw new InvalidOperationException($"没有找到城市：{query}");
+			return [];
         }
 
-        var first = results[0];
-        return new LocationResult(
-            first.GetProperty("name").GetString() ?? query,
-            first.GetProperty("latitude").GetDouble(),
-            first.GetProperty("longitude").GetDouble());
+		var candidates = new List<LocationCandidate>(results.GetArrayLength());
+		foreach (JsonElement item in results.EnumerateArray())
+		{
+			if (!item.TryGetProperty("latitude", out JsonElement latitude)
+				|| !item.TryGetProperty("longitude", out JsonElement longitude))
+			{
+				continue;
+			}
+			candidates.Add(new LocationCandidate(
+				item.TryGetProperty("name", out JsonElement name) ? name.GetString() ?? query : query,
+				item.TryGetProperty("country_code", out JsonElement countryCode) ? countryCode.GetString() : null,
+				item.TryGetProperty("feature_code", out JsonElement featureCode) ? featureCode.GetString() : null,
+				item.TryGetProperty("population", out JsonElement population) && population.TryGetInt64(out long value) ? value : 0,
+				latitude.GetDouble(),
+				longitude.GetDouble()));
+		}
+		return candidates;
     }
+
+	private static int ScoreCandidate(string query, LocationCandidate candidate)
+	{
+		int score = NamesMatch(query, candidate.Name) ? 10_000 : 0;
+		if (string.Equals(query, candidate.Name, StringComparison.OrdinalIgnoreCase)) score += 1_000;
+		if (string.Equals(candidate.CountryCode, "CN", StringComparison.OrdinalIgnoreCase)) score += 3_000;
+		if (candidate.FeatureCode?.Equals("PPLC", StringComparison.OrdinalIgnoreCase) == true) score += 2_000;
+		else if (candidate.FeatureCode?.StartsWith("PPLA", StringComparison.OrdinalIgnoreCase) == true) score += 1_500;
+		score += (int)Math.Min(candidate.Population / 1_000, 1_000);
+		return score;
+	}
+
+	private static bool IsAdministrativeCityCandidate(string query, LocationCandidate candidate) =>
+		NamesMatch(query, candidate.Name)
+		&& (candidate.FeatureCode?.Equals("PPLC", StringComparison.OrdinalIgnoreCase) == true
+			|| candidate.FeatureCode?.StartsWith("PPLA", StringComparison.OrdinalIgnoreCase) == true);
+
+	private static bool NamesMatch(string query, string candidateName) =>
+		string.Equals(NormalizeCityName(query), NormalizeCityName(candidateName), StringComparison.OrdinalIgnoreCase);
+
+	private static string NormalizeCityName(string value) =>
+		value.Trim().TrimEnd('市');
+
+	private static bool IsUnsuffixedChineseCityQuery(string query) =>
+		!query.EndsWith('市')
+		&& query.Length is >= 2 and <= 6
+		&& query.All(character => character is >= '\u3400' and <= '\u9fff');
 
     private async Task<WeatherSnapshot> ReadCurrentAsync(LocationResult location, CancellationToken cancellationToken)
     {
@@ -153,4 +240,14 @@ public sealed class OpenMeteoWeatherSnapshotSource : IWeatherSnapshotSource, IDi
     }
 
     private sealed record LocationResult(string Name, double Latitude, double Longitude);
+
+	private sealed record LocationCandidate(
+		string Name,
+		string? CountryCode,
+		string? FeatureCode,
+		long Population,
+		double Latitude,
+		double Longitude);
+
+	private sealed record CacheEntry(string Query, WeatherSnapshot Snapshot, DateTimeOffset FetchedAt);
 }

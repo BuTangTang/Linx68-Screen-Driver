@@ -7,9 +7,13 @@ namespace Linx68.ScreenDriver.Infrastructure;
 public sealed class WindowsWeatherLocationProvider : IAutomaticWeatherLocationProvider, IDisposable
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(30);
+	private static readonly TimeSpan UnresolvedCityRetryDelay = TimeSpan.FromSeconds(45);
     private readonly BigDataCloudReverseGeocoder _reverseGeocoder = new();
+	private readonly object _cacheGate = new();
     private AutomaticWeatherLocation? _cached;
     private DateTimeOffset _cachedAt;
+	private bool _cachedCityResolved;
+	private long _cacheGeneration;
 
     public async Task<AutomaticWeatherLocation?> TryGetAsync(
         CancellationToken cancellationToken = default) =>
@@ -20,13 +24,27 @@ public sealed class WindowsWeatherLocationProvider : IAutomaticWeatherLocationPr
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!forceRefresh && _cached is not null && DateTimeOffset.Now - _cachedAt < CacheDuration)
+		AutomaticWeatherLocation? cached;
+		DateTimeOffset cachedAt;
+		bool cachedCityResolved;
+		long cacheGeneration;
+		lock (_cacheGate)
+		{
+			cached = _cached;
+			cachedAt = _cachedAt;
+			cachedCityResolved = _cachedCityResolved;
+			cacheGeneration = _cacheGeneration;
+		}
+		TimeSpan cacheLifetime = cachedCityResolved ? CacheDuration : UnresolvedCityRetryDelay;
+		if (!forceRefresh && cached is not null && DateTimeOffset.Now - cachedAt < cacheLifetime)
         {
             return new AutomaticWeatherLocationResult(
-                DataLoadState.Ready,
-                _cached,
-                $"Windows 定位 · {_cached.DisplayName} · 使用缓存",
-                _cachedAt,
+				cachedCityResolved ? DataLoadState.Ready : DataLoadState.Stale,
+                cached,
+				cachedCityResolved
+					? $"Windows 定位 · {cached.DisplayName} · 使用缓存"
+					: "Windows 定位坐标缓存 · 城市解析仍不可用",
+				cachedAt,
                 FromCache: true);
         }
 
@@ -48,19 +66,27 @@ public sealed class WindowsWeatherLocationProvider : IAutomaticWeatherLocationPr
                 timeout: TimeSpan.FromSeconds(8));
             cancellationToken.ThrowIfCancellationRequested();
             BasicGeoposition coordinate = position.Coordinate.Point.Position;
-            string displayName = await ResolveDisplayNameAsync(
+			string? resolvedCity = await ResolveDisplayNameAsync(
                 coordinate.Latitude,
-                coordinate.Longitude);
-            _cached = new AutomaticWeatherLocation(
-                coordinate.Latitude,
-                coordinate.Longitude,
-                displayName);
-            _cachedAt = DateTimeOffset.Now;
-            return new AutomaticWeatherLocationResult(
-                DataLoadState.Ready,
-                _cached,
-                $"Windows 定位 · {displayName}",
-                _cachedAt);
+				coordinate.Longitude,
+				cancellationToken);
+			cancellationToken.ThrowIfCancellationRequested();
+			DateTimeOffset observedAt = DateTimeOffset.Now;
+			AutomaticWeatherLocationResult result = CreateLocatedResult(
+				coordinate.Latitude,
+				coordinate.Longitude,
+				resolvedCity,
+				observedAt);
+			lock (_cacheGate)
+			{
+				if (cacheGeneration == _cacheGeneration)
+				{
+					_cachedCityResolved = !string.IsNullOrWhiteSpace(resolvedCity);
+					_cachedAt = observedAt;
+					_cached = result.Location;
+				}
+			}
+			return result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -74,13 +100,20 @@ public sealed class WindowsWeatherLocationProvider : IAutomaticWeatherLocationPr
 
     private AutomaticWeatherLocationResult CreateFailure(string message)
     {
-        if (_cached is not null)
+		AutomaticWeatherLocation? cached;
+		DateTimeOffset cachedAt;
+		lock (_cacheGate)
+		{
+			cached = _cached;
+			cachedAt = _cachedAt;
+		}
+		if (cached is not null)
         {
             return new AutomaticWeatherLocationResult(
                 DataLoadState.Stale,
-                _cached,
-                $"{message} · 使用上次位置 {_cached.DisplayName}",
-                _cachedAt,
+				cached,
+				$"{message} · 使用上次位置 {cached.DisplayName}",
+				cachedAt,
                 FromCache: true);
         }
 
@@ -98,18 +131,52 @@ public sealed class WindowsWeatherLocationProvider : IAutomaticWeatherLocationPr
         _ => "Windows 定位暂不可用"
     };
 
-    private async Task<string> ResolveDisplayNameAsync(double latitude, double longitude)
+	public void InvalidateCache()
+	{
+		lock (_cacheGate)
+		{
+			_cacheGeneration++;
+			_cached = null;
+			_cachedAt = default;
+			_cachedCityResolved = false;
+		}
+	}
+
+	private async Task<string?> ResolveDisplayNameAsync(
+		double latitude,
+		double longitude,
+		CancellationToken cancellationToken)
     {
         try
         {
-            return await _reverseGeocoder.ResolveCityAsync(latitude, longitude)
-                ?? "当前位置";
+			return await _reverseGeocoder.ResolveCityAsync(latitude, longitude, cancellationToken);
         }
-        catch (Exception)
+		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+		{
+			throw;
+		}
+		catch (Exception)
         {
-            return "当前位置";
+			return null;
         }
     }
+
+	internal static AutomaticWeatherLocationResult CreateLocatedResult(
+		double latitude,
+		double longitude,
+		string? resolvedCity,
+		DateTimeOffset observedAt)
+	{
+		bool cityResolved = !string.IsNullOrWhiteSpace(resolvedCity);
+		string displayName = cityResolved ? resolvedCity!.Trim() : "当前位置";
+		return new AutomaticWeatherLocationResult(
+			cityResolved ? DataLoadState.Ready : DataLoadState.Stale,
+			new AutomaticWeatherLocation(latitude, longitude, displayName),
+			cityResolved
+				? $"Windows 定位 · {displayName}"
+				: "Windows 定位成功 · 城市反向解析失败 · 已保留坐标",
+			observedAt);
+	}
 
     public void Dispose() => _reverseGeocoder.Dispose();
 }

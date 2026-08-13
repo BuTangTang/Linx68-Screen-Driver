@@ -1,20 +1,22 @@
 灵犀68屏幕驱动全主题预览
-生成时间：2026-07-28 19:54:12 +08:00
-主题数量：14
-强调色：#FF5B00
-字体：苹方-简
+生成时间：2026-08-09 22:14:16 +08:00
+主题数量：15
+强调色：#E4694C
+字体：Segoe UI Variable Display（默认）
+设备屏外观：夜间
 
 01. 电脑状态  [system]
 02. 状态概览  [dashboard]
 03. 性能条带  [performance]
 04. 网络监控  [network]
-05. 状态极简  [system-minimal]
-06. 极简时钟  [clock]
-07. 点阵时钟  [clock-dot-matrix]
-08. 霓虹时钟  [clock-neon]
-09. 翻页时钟  [clock-flip]
-10. 音乐  [music]
-11. 音乐极简  [music-minimal]
-12. 音乐海报  [music-poster]
-13. AI 用量  [ai-quota]
-14. 图片时间  [image]
+05. 像素管家  [pixel-companion]
+06. 信号花园  [signal-garden]
+07. 翻页时钟  [clock-flip]
+08. 五日天气  [weather-five-day]
+09. 时钟天气  [clock-weather]
+10. 城市晨报  [city-briefing]
+11. 今日节奏  [day-rhythm]
+12. 封面歌词  [music]
+13. 磁带余晖  [music-cassette]
+14. Codex 额度  [ai-quota]
+15. Codex 任务  [codex-tasks]
